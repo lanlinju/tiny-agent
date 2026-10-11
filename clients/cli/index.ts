@@ -4,7 +4,8 @@ import { WebSocket } from 'ws';
 import type { AgentCommand } from '../../src/protocols/commands';
 import { parseAgentCommand } from '../../src/protocols/commands';
 import type { AgentEvent } from '../../src/protocols/events';
-import { formatError, parseEvent, renderEvent } from './render';
+import { formatError, formatEvent, parseEvent, renderEvent } from './render';
+import { createTranscript } from './transcript';
 
 /**
  * CLI client.
@@ -16,18 +17,22 @@ const port = Number(process.env.AGENT_PORT ?? 3987);
 const url = process.env.AGENT_WS_URL ?? `ws://localhost:${port}`;
 
 async function main(): Promise<void> {
+  const { sessionId: sessionArg, logFile } = parseArgs(process.argv.slice(2));
+  const transcript = createTranscript(logFile);
+
   const socket = new WebSocket(url);
   await once(socket, 'open');
 
   socket.on('message', (data) => {
     const event = parseEvent(String(data));
-    if (event) {
-      renderEvent(event);
+    if (!event) {
+      return;
     }
+    renderEvent(event);
+    transcript?.write(formatEvent(event));
   });
 
-  const requestedSession =
-    process.argv[2]?.trim() || process.env.AGENT_SESSION?.trim() || '';
+  const requestedSession = sessionArg || process.env.AGENT_SESSION?.trim() || '';
   const ready = nextEvent(
     socket,
     (event) =>
@@ -53,6 +58,10 @@ async function main(): Promise<void> {
 
   console.log(`connected ${url} session=${sessionId}`);
   console.log(`web GUI: http://localhost:${port}/?session=${sessionId}`);
+  if (logFile) {
+    console.log(`transcript: ${logFile}`);
+  }
+  transcript?.write(`# session=${sessionId} started ${new Date().toISOString()}`);
   console.log('type a message, /quit to exit');
 
   const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -84,7 +93,28 @@ async function main(): Promise<void> {
   } finally {
     rl.close();
     socket.close();
+    transcript?.close();
   }
+}
+
+/** Parse CLI args; positional is the session id, `--log` sets the transcript path. */
+function parseArgs(argv: readonly string[]): { sessionId: string; logFile: string } {
+  let sessionId = '';
+  let logFile = process.env.AGENT_LOG_FILE?.trim() ?? '';
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index] ?? '';
+    if (arg === '--log') {
+      logFile = argv[index + 1]?.trim() ?? '';
+      index += 1;
+    } else if (arg.startsWith('--log=')) {
+      logFile = arg.slice('--log='.length).trim();
+    } else if (!arg.startsWith('-') && sessionId === '') {
+      sessionId = arg;
+    }
+  }
+
+  return { sessionId, logFile };
 }
 
 function once(socket: WebSocket, event: 'open'): Promise<void> {

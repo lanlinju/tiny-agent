@@ -11,6 +11,40 @@ export function parseEvent(raw: string): AgentEvent | undefined {
   }
 }
 
+/** Format one protocol event as a single human-readable line. */
+export function formatEvent(event: AgentEvent): string {
+  switch (event.type) {
+    case 'session.created':
+      return `[session] created ${event.payload.sessionId}`;
+    case 'session.attached':
+      return `[session] attached ${event.payload.sessionId}`;
+    case 'user.message':
+      return `[user] ${event.payload.text}`;
+    case 'turn.started':
+      return `[turn] started: ${event.payload.goal}`;
+    case 'turn.completed':
+      return '[turn] completed';
+    case 'turn.interrupted':
+      return '[turn] interrupted';
+    case 'message.delta':
+      return event.payload.text;
+    case 'message.completed':
+      return `[assistant] ${event.payload.content}`;
+    case 'tool.started':
+      return `[tool] ${event.payload.tool} args=${JSON.stringify(event.payload.args)}`;
+    case 'tool.finished':
+      return event.payload.error !== undefined
+        ? `[tool] ${event.payload.tool} error=${event.payload.error}`
+        : `[tool] ${event.payload.tool} result=${JSON.stringify(event.payload.result)}`;
+    case 'approval.requested':
+      return `[approval] requested tool=${event.payload.tool}`;
+    case 'approval.resolved':
+      return `[approval] ${event.payload.approved ? 'approved' : 'denied'}`;
+    case 'error':
+      return `[error] ${event.payload.message}${event.payload.code ? ` (${event.payload.code})` : ''}`;
+  }
+}
+
 /**
  * Render one protocol event to the terminal.
  *
@@ -18,53 +52,11 @@ export function parseEvent(raw: string): AgentEvent | undefined {
  * reasoning chain. Clients only render; they never derive business state.
  */
 export function renderEvent(event: AgentEvent): void {
-  switch (event.type) {
-    case 'session.created':
-      console.log(`[session] created ${event.payload.sessionId}`);
-      break;
-    case 'session.attached':
-      console.log(`[session] attached ${event.payload.sessionId}`);
-      break;
-    case 'user.message':
-      console.log(`[user] ${event.payload.text}`);
-      break;
-    case 'turn.started':
-      console.log(`[turn] started: ${event.payload.goal}`);
-      break;
-    case 'turn.completed':
-      console.log('[turn] completed');
-      break;
-    case 'turn.interrupted':
-      console.log('[turn] interrupted');
-      break;
-    case 'message.delta':
-      process.stdout.write(event.payload.text);
-      break;
-    case 'message.completed':
-      console.log(`[assistant] ${event.payload.content}`);
-      break;
-    case 'tool.started':
-      console.log(`[tool] ${event.payload.tool} args=${JSON.stringify(event.payload.args)}`);
-      break;
-    case 'tool.finished':
-      if (event.payload.error !== undefined) {
-        console.log(`[tool] ${event.payload.tool} error=${event.payload.error}`);
-      } else {
-        console.log(`[tool] ${event.payload.tool} result=${JSON.stringify(event.payload.result)}`);
-      }
-      break;
-    case 'approval.requested':
-      console.log(`[approval] requested tool=${event.payload.tool}`);
-      break;
-    case 'approval.resolved':
-      console.log(`[approval] ${event.payload.approved ? 'approved' : 'denied'}`);
-      break;
-    case 'error':
-      console.log(
-        `[error] ${event.payload.message}${event.payload.code ? ` (${event.payload.code})` : ''}`,
-      );
-      break;
+  if (event.type === 'message.delta') {
+    process.stdout.write(event.payload.text);
+    return;
   }
+  console.log(formatEvent(event));
 }
 
 export function formatError(error: unknown): string {
