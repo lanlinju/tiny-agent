@@ -311,8 +311,16 @@ function describeResult(item: ToolItem): string {
       .join('\n');
   }
 
-  if (item.tool === 'read' && typeof record.content === 'string') {
-    return record.content;
+  if (item.tool === 'read') {
+    if (record.type === 'image') {
+      const mime = typeof record.mimeType === 'string' ? record.mimeType : 'image';
+      const bytes = typeof record.bytes === 'number' ? ` (${record.bytes} bytes)` : '';
+      const resized = record.resized === true ? ', resized' : '';
+      return `[image] ${mime}${bytes}${resized}`;
+    }
+    if (typeof record.content === 'string') {
+      return record.content;
+    }
   }
 
   return JSON.stringify(record, null, 2);

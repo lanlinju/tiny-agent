@@ -5,6 +5,7 @@ import type { AgentConnection, AgentServer } from '../../src/server/agent-server
 import { createMemorySessionStore } from '../../src/store/session-store';
 import { createMockLLM } from '../../src/llm/mock';
 import type { LLMProvider } from '../../src/llm/provider';
+import { contentText } from '../../src/llm/provider';
 import { createToolRegistry } from '../../src/tools/registry';
 import { timeTool } from '../../src/tools/builtin/time';
 import type { AgentEvent } from '../../src/protocols/events';
@@ -83,7 +84,9 @@ test('injects steering messages before the next LLM call', async () => {
   const llm: LLMProvider = {
     async chat({ messages }) {
       seenUserMessages.push(
-        messages.filter((message) => message.role === 'user').map((message) => message.content),
+        messages
+          .filter((message) => message.role === 'user')
+          .map((message) => contentText(message.content)),
       );
       if (!steered) {
         steered = true;

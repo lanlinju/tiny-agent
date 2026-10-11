@@ -1,4 +1,5 @@
 import type { AssistantMessage, LLMProvider, Message } from './provider';
+import { contentText } from './provider';
 
 /** Create a deterministic mock LLM for tests and no-key demos. */
 export function createMockLLM(): LLMProvider {
@@ -29,7 +30,7 @@ function buildResponse(messages: readonly Message[]): AssistantMessage {
 
   return {
     role: 'assistant',
-    content: `The time tool returned: ${lastToolMessage.content}`,
+    content: `The time tool returned: ${contentText(lastToolMessage.content)}`,
     toolCalls: [],
   };
 }

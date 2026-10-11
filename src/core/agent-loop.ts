@@ -1,6 +1,9 @@
 import type { AgentEvent, JsonValue } from '../protocols/events';
 import { JsonValueSchema } from '../protocols/events';
+import type { ImagePart } from '../protocols/content';
+import { ImagePartSchema } from '../protocols/content';
 import type { Message, ToolCall } from '../llm/provider';
+import { contentText } from '../llm/provider';
 import type { RunContext } from './types';
 
 /** Thrown when the loop exceeds RunContext.maxSteps after emitting an error event. */
@@ -40,17 +43,25 @@ export async function runLoop(ctx: RunContext, goal: string): Promise<string> {
     }
 
     messages.push(response);
-    await emitMessageCompleted(ctx, messageId, response.content);
+    await emitMessageCompleted(ctx, messageId, contentText(response.content));
 
+    const images: ImagePart[] = [];
     for (const call of response.toolCalls) {
-      await handleToolCall(ctx, messages, call);
+      await handleToolCall(ctx, messages, call, images);
+    }
+
+    // Images returned by tools travel as a user message so any vision-capable
+    // provider sees them, without depending on tool-result content support.
+    if (images.length > 0) {
+      messages.push({ role: 'user', content: images });
     }
 
     // Steering messages enter after this turn's tool calls, before the next LLM call.
     const steering = ctx.drainSteering();
     if (response.toolCalls.length === 0 && steering.length === 0) {
-      await emitTurnCompleted(ctx, response.content);
-      return response.content;
+      const answer = contentText(response.content);
+      await emitTurnCompleted(ctx, answer);
+      return answer;
     }
     for (const text of steering) {
       messages.push({ role: 'user', content: text });
@@ -65,6 +76,7 @@ async function handleToolCall(
   ctx: RunContext,
   messages: Message[],
   call: ToolCall,
+  images: ImagePart[],
 ): Promise<void> {
   const tool = call.function.name;
   const argsResult = parseToolArguments(call.function.arguments);
@@ -86,15 +98,39 @@ async function handleToolCall(
 
   try {
     const result = await ctx.tools.call(tool, argsResult.value, { now: ctx.now, cwd: ctx.cwd });
+    const { images: resultImages, rest } = extractImages(result);
+    images.push(...resultImages);
     messages.push({
       role: 'tool',
       toolCallId: call.id,
-      content: JSON.stringify(result),
+      content: JSON.stringify(rest),
     });
-    await emitToolFinished(ctx, call.id, tool, result);
+    await emitToolFinished(ctx, call.id, tool, rest);
   } catch (error) {
     await finishToolWithError(ctx, messages, call.id, tool, formatError(error));
   }
+}
+
+/**
+ * Split a tool result into model-facing image parts and the JSON-safe remainder.
+ *
+ * Tools advertise an image by returning an `image` block with `data` and
+ * `mimeType`. The block is sent to the model but stripped from the event and
+ * tool message so base64 never reaches `events.jsonl`.
+ */
+function extractImages(result: JsonValue): { images: ImagePart[]; rest: JsonValue } {
+  if (isRecord(result) && 'image' in result) {
+    const { image, ...rest } = result;
+    const parsed = ImagePartSchema.safeParse(image);
+    if (parsed.success) {
+      return { images: [parsed.data], rest };
+    }
+  }
+  return { images: [], rest: result };
+}
+
+function isRecord(value: JsonValue): value is { readonly [key: string]: JsonValue } {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 type ParseResult =

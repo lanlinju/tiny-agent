@@ -104,6 +104,34 @@ test('maps assistant tool calls and tool results back to the wire format', async
   assert.equal(body.messages[1]?.tool_call_id, 'c1');
 });
 
+test('maps user image content parts to OpenAI data URLs', async () => {
+  let body: WireBody | undefined;
+  const fetchImpl: typeof fetch = async (_input, init) => {
+    body = JSON.parse(String(init?.body)) as WireBody;
+    return new Response(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }), {
+      status: 200,
+    });
+  };
+
+  const llm = createOpenAICompatibleLLM({ apiKey: 'k', model: 'm', fetchImpl });
+  await llm.chat({
+    messages: [
+      { role: 'user', content: 'look' },
+      {
+        role: 'user',
+        content: [{ type: 'image', data: 'QUJD', mimeType: 'image/png' }],
+      },
+    ],
+  });
+
+  assert.ok(body);
+  assert.deepEqual(body.messages[0], { role: 'user', content: 'look' });
+  assert.deepEqual(body.messages[1], {
+    role: 'user',
+    content: [{ type: 'image_url', image_url: { url: 'data:image/png;base64,QUJD' } }],
+  });
+});
+
 test('throws with status and body when the API returns an error', async () => {
   const fetchImpl: typeof fetch = async () =>
     new Response('bad key', { status: 401, statusText: 'Unauthorized' });

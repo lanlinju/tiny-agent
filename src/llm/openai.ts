@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import type { ContentPart } from '../protocols/content';
+import { contentText } from './provider';
 import type {
   AssistantMessage,
   ChatDeltaHandler,
@@ -73,9 +75,15 @@ const StreamChunkSchema = z.object({
     .optional(),
 });
 
+interface OpenAIContentPart {
+  readonly type: 'text' | 'image_url';
+  readonly text?: string;
+  readonly image_url?: { readonly url: string };
+}
+
 interface OpenAIMessage {
   readonly role: 'system' | 'user' | 'assistant' | 'tool';
-  readonly content: string | null;
+  readonly content: string | null | readonly OpenAIContentPart[];
   readonly tool_calls?: readonly ToolCall[];
   readonly tool_call_id?: string;
 }
@@ -152,22 +160,39 @@ function toOpenAIMessage(message: Message): OpenAIMessage {
     case 'tool':
       return {
         role: 'tool',
-        content: message.content,
+        content: contentText(message.content),
         tool_call_id: message.toolCallId ?? '',
       };
-    case 'assistant':
+    case 'assistant': {
+      const text = contentText(message.content);
       if (message.toolCalls && message.toolCalls.length > 0) {
         return {
           role: 'assistant',
-          content: message.content === '' ? null : message.content,
+          content: text === '' ? null : text,
           tool_calls: message.toolCalls,
         };
       }
-      return { role: 'assistant', content: message.content };
+      return { role: 'assistant', content: text };
+    }
     case 'system':
+      return { role: 'system', content: contentText(message.content) };
     case 'user':
-      return { role: message.role, content: message.content };
+      return { role: 'user', content: toOpenAIContent(message.content) };
   }
+}
+
+/** Map internal content parts to the OpenAI vision wire format. */
+function toOpenAIContent(
+  content: string | readonly ContentPart[],
+): string | readonly OpenAIContentPart[] {
+  if (typeof content === 'string') {
+    return content;
+  }
+  return content.map((part) =>
+    part.type === 'text'
+      ? { type: 'text', text: part.text }
+      : { type: 'image_url', image_url: { url: `data:${part.mimeType};base64,${part.data}` } },
+  );
 }
 
 function parseChatCompletion(json: unknown): AssistantMessage {

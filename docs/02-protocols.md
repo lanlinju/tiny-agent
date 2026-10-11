@@ -83,3 +83,29 @@
 - 提供解析函数或校验入口。
 - 不实现业务逻辑。
 - 不实现真实网络通信细节之外的 Agent 行为。
+
+## 8. 消息内容块与工具图片结果
+
+多模态内容同样先在协议层定义，再实现生产者和消费者。
+
+`src/protocols/content.ts` 定义消息内容块：
+
+| 块 | 字段 | 说明 |
+| --- | --- | --- |
+| `text` | `text` | 纯文本片段。 |
+| `image` | `data`, `mimeType` | Base64 图片字节与其 MIME 类型。 |
+
+`Message.content` 的取值为 `string | ContentPart[]`：单模态消息保持字符串，包含图片时使用内容块数组。
+
+工具图片结果的约定：
+
+1. 工具在结果里附带 `image`（`type`/`data`/`mimeType`）字段。
+2. `core` 识别该字段，将图片作为一条 `user` 消息发给模型。
+3. `core` 从工具消息和 `tool.finished` 事件中剥离 Base64，事件只保留 `path`、`mimeType`、`bytes`、`resized` 等元数据。
+
+设计理由：
+
+- 图片不进入 `events.jsonl`，避免 Base64 撑大会话记录。
+- 图片作为独立 `user` 消息，不依赖任何 provider 对工具结果多模态内容的支持。
+- provider 负责把内容块适配成各自线格式（如 OpenAI 的 `image_url` data URL），`core` 不感知线格式。
+- `clients` 只能渲染事件中的元数据，不渲染图片字节。

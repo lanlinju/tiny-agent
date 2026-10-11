@@ -1,4 +1,5 @@
 import type { JsonValue } from '../protocols/events';
+import type { ContentPart } from '../protocols/content';
 
 /** Role used by messages exchanged with an LLM provider. */
 export type MessageRole = 'system' | 'user' | 'assistant' | 'tool';
@@ -29,9 +30,18 @@ export interface ToolCall {
 /** Message representation used inside the core loop. */
 export interface Message {
   readonly role: MessageRole;
-  readonly content: string;
+  /** Plain text, or multimodal parts (e.g. an image read by a tool). */
+  readonly content: string | readonly ContentPart[];
   readonly toolCallId?: string;
   readonly toolCalls?: readonly ToolCall[];
+}
+
+/** Flatten message content to text, dropping non-text parts. */
+export function contentText(content: string | readonly ContentPart[]): string {
+  if (typeof content === 'string') {
+    return content;
+  }
+  return content.map((part) => (part.type === 'text' ? part.text : '')).join('\n');
 }
 
 /** Assistant message returned by an LLM provider. */

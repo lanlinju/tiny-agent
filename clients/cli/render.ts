@@ -255,6 +255,12 @@ function describeToolResult(
   }
 
   if (tool === 'read') {
+    if (record.type === 'image') {
+      const mime = typeof record.mimeType === 'string' ? record.mimeType : 'image';
+      const bytes = typeof record.bytes === 'number' ? ` · ${record.bytes} bytes` : '';
+      const resized = record.resized === true ? ' · resized' : '';
+      return { summary: `${mime}${bytes}${resized}`, body: [] };
+    }
     const total = typeof record.totalLines === 'number' ? record.totalLines : undefined;
     const content = typeof record.content === 'string' ? record.content : '';
     return {

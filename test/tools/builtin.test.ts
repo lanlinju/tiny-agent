@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -29,14 +29,38 @@ test('write then read round-trips content and supports line windows', async () =
     assert.equal(written.bytes, 11);
 
     const read = await readTool.fn({ path: 'sub/a.txt' }, ctx);
+    if (read.type !== 'text') throw new Error('expected text result');
     assert.equal(read.content, 'hello\nworld');
     assert.equal(read.totalLines, 2);
     assert.equal(read.truncated, false);
 
     const sliced = await readTool.fn({ path: 'sub/a.txt', offset: 2, limit: 1 }, ctx);
+    if (sliced.type !== 'text') throw new Error('expected text result');
     assert.equal(sliced.content, 'world');
     assert.equal(sliced.truncated, true);
     assert.equal(dir.length > 0, true);
+  });
+});
+
+// 1x1 transparent PNG, used to exercise magic-byte detection.
+const ONE_PIXEL_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+  'base64',
+);
+
+test('read detects images by magic bytes and returns an image content block', async () => {
+  await withTempDir(async (dir, ctx) => {
+    // Deliberately wrong extension: detection must rely on content, not name.
+    await writeFile(join(dir, 'photo.txt'), ONE_PIXEL_PNG);
+
+    const result = await readTool.fn({ path: 'photo.txt' }, ctx);
+    if (result.type !== 'image') throw new Error('expected image result');
+    assert.equal(result.mimeType, 'image/png');
+    assert.equal(result.image.type, 'image');
+    assert.equal(result.image.mimeType, 'image/png');
+    assert.ok(result.image.data.length > 0);
+    assert.ok(result.bytes > 0);
+    assert.equal(typeof result.resized, 'boolean');
   });
 });
 
