@@ -47,6 +47,8 @@ export function formatEvent(event: AgentEvent): string {
       return `[approval] ${event.payload.approved ? 'approved' : 'denied'}`;
     case 'error':
       return `[error] ${event.payload.message}${event.payload.code ? ` (${event.payload.code})` : ''}`;
+    case 'queue_update':
+      return `[queue] steering=${JSON.stringify(event.payload.steering)}`;
   }
 }
 
@@ -148,6 +150,10 @@ export function presentEvent(event: AgentEvent, options: RenderOptions): RenderL
           text: `  ✗ ${event.payload.message}${event.payload.code ? ` (${event.payload.code})` : ''}`,
         },
       ];
+    case 'queue_update':
+      return event.payload.steering.length > 0
+        ? [{ kind: 'lifecycle', text: `· steering queued (${event.payload.steering.length})` }]
+        : [];
   }
 }
 

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createAgentServer } from '../../src/server/agent-server';
-import type { AgentConnection } from '../../src/server/agent-server';
+import type { AgentConnection, AgentServer } from '../../src/server/agent-server';
 import { createMemorySessionStore } from '../../src/store/session-store';
 import { createMockLLM } from '../../src/llm/mock';
 import type { LLMProvider } from '../../src/llm/provider';
@@ -71,6 +71,93 @@ test('broadcasts streaming deltas but does not persist them', async () => {
   const stored = await store.read(sessionId);
   assert.equal(stored.some((event) => event.type === 'message.delta'), false);
   assert.ok(stored.some((event) => event.type === 'message.completed'));
+});
+
+test('injects steering messages before the next LLM call', async () => {
+  const seenUserMessages: string[][] = [];
+  const store = createMemorySessionStore();
+  let server: AgentServer | undefined;
+  let sessionId = '';
+  let steered = false;
+
+  const llm: LLMProvider = {
+    async chat({ messages }) {
+      seenUserMessages.push(
+        messages.filter((message) => message.role === 'user').map((message) => message.content),
+      );
+      if (!steered) {
+        steered = true;
+        // A user steers while the run is in flight.
+        await server?.handleRawCommand(
+          { type: 'steer', payload: { sessionId, text: 'also add tests' } },
+          makeConnection(),
+        );
+        return { role: 'assistant', content: 'working', toolCalls: [] };
+      }
+      return { role: 'assistant', content: 'done', toolCalls: [] };
+    },
+  };
+
+  server = createAgentServer({ llm, tools: createToolRegistry([]), store, owner: 'test' });
+  const connection = makeConnection();
+  await server.handleRawCommand({ type: 'session.create', payload: {} }, connection);
+  sessionId = firstSessionId(connection.events);
+  await server.handleRawCommand(
+    { type: 'message.send', payload: { sessionId, text: 'do the task' } },
+    connection,
+  );
+
+  // Two LLM calls: the first turn, then the steering-forced continuation.
+  assert.deepEqual(seenUserMessages[0], ['do the task']);
+  assert.deepEqual(seenUserMessages[1], ['do the task', 'also add tests']);
+
+  assert.ok(
+    connection.events.some(
+      (event) => event.type === 'user.message' && event.payload.text === 'also add tests',
+    ),
+  );
+  assert.ok(connection.events.some((event) => event.type === 'queue_update'));
+
+  const stored = await store.read(sessionId);
+  assert.equal(stored.some((event) => event.type === 'queue_update'), false);
+  assert.ok(stored.some((event) => event.type === 'user.message'));
+});
+
+test('queues a steer sent immediately after a message', async () => {
+  let chatCount = 0;
+  const llm: LLMProvider = {
+    async chat() {
+      chatCount += 1;
+      return { role: 'assistant', content: 'ok', toolCalls: [] };
+    },
+  };
+  const server = createAgentServer({
+    llm,
+    tools: createToolRegistry([]),
+    store: createMemorySessionStore(),
+    owner: 'test',
+  });
+  const connection = makeConnection();
+  await server.handleRawCommand({ type: 'session.create', payload: {} }, connection);
+  const sessionId = firstSessionId(connection.events);
+
+  // Do not await the send: the steer must already be seen as running.
+  const sending = server.handleRawCommand(
+    { type: 'message.send', payload: { sessionId, text: 'one' } },
+    connection,
+  );
+  await server.handleRawCommand(
+    { type: 'steer', payload: { sessionId, text: 'two' } },
+    connection,
+  );
+  await sending;
+
+  assert.equal(chatCount, 2);
+  assert.ok(
+    connection.events.some(
+      (event) => event.type === 'queue_update' && event.payload.steering.length === 1,
+    ),
+  );
 });
 
 function createTestServer() {

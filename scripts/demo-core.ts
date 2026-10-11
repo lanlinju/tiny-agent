@@ -31,6 +31,7 @@ async function main(): Promise<void> {
     history: () => [],
     shouldCompact: () => false,
     compact: async (messages) => messages,
+    drainSteering: () => [],
     // Approval policy belongs to the server layer (phase 6); the demo tool never needs it.
     needsApproval: () => false,
     requestApproval: async () => true,

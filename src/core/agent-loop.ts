@@ -36,13 +36,18 @@ export async function runLoop(ctx: RunContext, goal: string): Promise<string> {
     messages.push(response);
     await emitMessageCompleted(ctx, messageId, response.content);
 
-    if (response.toolCalls.length === 0) {
+    for (const call of response.toolCalls) {
+      await handleToolCall(ctx, messages, call);
+    }
+
+    // Steering messages enter after this turn's tool calls, before the next LLM call.
+    const steering = ctx.drainSteering();
+    if (response.toolCalls.length === 0 && steering.length === 0) {
       await emitTurnCompleted(ctx, response.content);
       return response.content;
     }
-
-    for (const call of response.toolCalls) {
-      await handleToolCall(ctx, messages, call);
+    for (const text of steering) {
+      messages.push({ role: 'user', content: text });
     }
   }
 

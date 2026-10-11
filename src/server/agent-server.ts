@@ -35,6 +35,15 @@ export interface AgentServer {
   removeConnection(connection: AgentConnection): void;
 }
 
+/** Per-session runtime state owned by the server. */
+interface SessionState {
+  running: boolean;
+  steering: string[];
+}
+
+/** Events that are broadcast but never written to events.jsonl. */
+const TRANSIENT_EVENT_TYPES = new Set<AgentEvent['type']>(['message.delta', 'queue_update']);
+
 /**
  * The only translation layer between clients and core.
  *
@@ -49,7 +58,7 @@ export function createAgentServer(options: AgentServerOptions): AgentServer {
   const cwd = options.cwd ?? process.cwd();
   const maxSteps = options.maxSteps ?? 8;
   const now = options.now ?? (() => Date.now());
-  const sessions = new Set<string>();
+  const sessions = new Map<string, SessionState>();
   const subscriptions = new Map<AgentConnection, Set<() => void>>();
 
   function meta(sessionId: string): Pick<AgentEvent, 'sessionId' | 'ts' | 'agentId' | 'owner'> {
@@ -57,10 +66,10 @@ export function createAgentServer(options: AgentServerOptions): AgentServer {
   }
 
   async function emit(event: AgentEvent): Promise<void> {
-    // Validation boundary: broadcast only validated events, and persist the same bytes.
+    // Validation boundary: broadcast only validated events.
     const validated = parseAgentEvent(event);
-    // Streaming deltas are transient: broadcast them, but keep events.jsonl clean.
-    if (validated.type !== 'message.delta') {
+    // Transient events are broadcast but kept out of events.jsonl.
+    if (!TRANSIENT_EVENT_TYPES.has(validated.type)) {
       await options.store.append(validated);
     }
     bus.publish(validated);
@@ -95,9 +104,29 @@ export function createAgentServer(options: AgentServerOptions): AgentServer {
     subscriptions.delete(connection);
   }
 
+  function ensureSession(sessionId: string): SessionState {
+    let state = sessions.get(sessionId);
+    if (!state) {
+      state = { running: false, steering: [] };
+      sessions.set(sessionId, state);
+    }
+    return state;
+  }
+
+  function takeSteering(state: SessionState, sessionId: string): string[] {
+    if (state.steering.length === 0) {
+      return [];
+    }
+    const drained = [...state.steering];
+    state.steering.length = 0;
+    // Transient: let clients clear their queue indicator.
+    void emit({ type: 'queue_update', ...meta(sessionId), payload: { steering: [] } });
+    return drained;
+  }
+
   async function createSession(connection: AgentConnection): Promise<void> {
     const sessionId = `session-${randomUUID()}`;
-    sessions.add(sessionId);
+    ensureSession(sessionId);
     subscribe(connection, sessionId);
     await emit({ type: 'session.created', ...meta(sessionId), payload: { sessionId } });
     await emit({ type: 'session.attached', ...meta(sessionId), payload: { sessionId } });
@@ -114,7 +143,7 @@ export function createAgentServer(options: AgentServerOptions): AgentServer {
       return;
     }
     // Rehydrate the session from the store so attach survives a server restart.
-    sessions.add(sessionId);
+    ensureSession(sessionId);
     subscribe(connection, sessionId);
 
     // Replay persisted reasoning to this connection only: it is already stored,
@@ -135,35 +164,39 @@ export function createAgentServer(options: AgentServerOptions): AgentServer {
     sessionId: string,
     text: string,
   ): Promise<void> {
-    if (!sessions.has(sessionId)) {
+    const state = sessions.get(sessionId);
+    if (!state) {
       sendTo(connection, serviceError(sessionId, `Unknown session: ${sessionId}`, 'unknown_session'));
       return;
     }
 
-    await emit({ type: 'user.message', ...meta(sessionId), payload: { text } });
-
-    const ctx: RunContext = {
-      sessionId,
-      agentId,
-      owner,
-      cwd,
-      maxSteps,
-      llm: options.llm,
-      tools: options.tools,
-      systemPrompt: defaultSystemPrompt,
-      // Session memory/compaction is a later concern; each turn runs from its goal.
-      history: () => [],
-      shouldCompact: () => false,
-      compact: async (messages) => messages,
-      // Approval policy is server-owned but lands in phase 6; tools run directly for now.
-      needsApproval: () => false,
-      requestApproval: async () => false,
-      emit,
-      now,
-      nextId: (prefix) => `${prefix}-${randomUUID()}`,
-    };
-
+    // Mark running before any await so a steer arriving right after send is queued.
+    state.running = true;
     try {
+      await emit({ type: 'user.message', ...meta(sessionId), payload: { text } });
+
+      const ctx: RunContext = {
+        sessionId,
+        agentId,
+        owner,
+        cwd,
+        maxSteps,
+        llm: options.llm,
+        tools: options.tools,
+        systemPrompt: defaultSystemPrompt,
+        // Session memory/compaction is a later concern; each turn runs from its goal.
+        history: () => [],
+        shouldCompact: () => false,
+        compact: async (messages) => messages,
+        drainSteering: () => takeSteering(state, sessionId),
+        // Approval policy is server-owned but lands in phase 6; tools run directly for now.
+        needsApproval: () => false,
+        requestApproval: async () => false,
+        emit,
+        now,
+        nextId: (prefix) => `${prefix}-${randomUUID()}`,
+      };
+
       await runLoop(ctx, text);
     } catch (error) {
       if (error instanceof MaxStepsExceededError) {
@@ -171,7 +204,33 @@ export function createAgentServer(options: AgentServerOptions): AgentServer {
         return;
       }
       await emit(serviceError(sessionId, formatError(error), 'turn_failed'));
+    } finally {
+      state.running = false;
     }
+  }
+
+  async function steer(
+    connection: AgentConnection,
+    sessionId: string,
+    text: string,
+  ): Promise<void> {
+    const state = sessions.get(sessionId);
+    if (!state) {
+      sendTo(connection, serviceError(sessionId, `Unknown session: ${sessionId}`, 'unknown_session'));
+      return;
+    }
+    if (!state.running) {
+      // Idle: treat steering like an ordinary message so it still works.
+      await sendMessage(connection, sessionId, text);
+      return;
+    }
+    state.steering.push(text);
+    await emit({ type: 'user.message', ...meta(sessionId), payload: { text } });
+    await emit({
+      type: 'queue_update',
+      ...meta(sessionId),
+      payload: { steering: [...state.steering] },
+    });
   }
 
   async function handleCommand(command: AgentCommand, connection: AgentConnection): Promise<void> {
@@ -184,6 +243,9 @@ export function createAgentServer(options: AgentServerOptions): AgentServer {
         return;
       case 'message.send':
         await sendMessage(connection, command.payload.sessionId, command.payload.text);
+        return;
+      case 'steer':
+        await steer(connection, command.payload.sessionId, command.payload.text);
         return;
       case 'approval.respond':
       case 'interrupt':

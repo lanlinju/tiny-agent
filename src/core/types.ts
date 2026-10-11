@@ -21,6 +21,8 @@ export interface RunContext {
   readonly history: () => readonly Message[];
   readonly shouldCompact: (messages: readonly Message[]) => boolean;
   readonly compact: (messages: readonly Message[]) => Promise<readonly Message[]>;
+  /** Remove and return steering messages queued since the last drain. */
+  readonly drainSteering: () => readonly string[];
   readonly needsApproval: (tool: string) => boolean;
   readonly requestApproval: (request: ApprovalRequest) => Promise<boolean>;
   readonly emit: (event: AgentEvent) => void | Promise<void>;

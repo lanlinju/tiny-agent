@@ -125,6 +125,14 @@ export const ErrorEventSchema = EventMetaSchema.extend({
   }).strict(),
 }).strict();
 
+/** Pending steering queue changed. Transient: not persisted to disk. */
+export const QueueUpdateEventSchema = EventMetaSchema.extend({
+  type: z.literal('queue_update'),
+  payload: z.object({
+    steering: JsonValueSchema.array(),
+  }).strict(),
+}).strict();
+
 /** Server-to-client event schema shared by server, clients and store. */
 export const AgentEventSchema = z.discriminatedUnion('type', [
   SessionCreatedEventSchema,
@@ -140,6 +148,7 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
   ApprovalRequestedEventSchema,
   ApprovalResolvedEventSchema,
   ErrorEventSchema,
+  QueueUpdateEventSchema,
 ]);
 
 /** Server-to-client event type inferred from the zod schema. */

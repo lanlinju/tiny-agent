@@ -21,6 +21,7 @@
   var sessionId = '';
   var socket = null;
   var streaming = null; // { id, el } while an assistant message streams in
+  var busy = false;
 
   function connect() {
     socket = new WebSocket(url);
@@ -64,6 +65,15 @@
     if (event.type === 'session.created' || event.type === 'session.attached') {
       sessionId = event.payload.sessionId;
       sessionEl.textContent = 'session: ' + sessionId;
+    }
+    if (event.type === 'turn.started') {
+      busy = true;
+    } else if (
+      event.type === 'turn.completed' ||
+      event.type === 'turn.interrupted' ||
+      event.type === 'error'
+    ) {
+      busy = false;
     }
     render(event);
   }
@@ -145,6 +155,8 @@
         return '[approval] ' + (payload.approved ? 'approved' : 'denied');
       case 'error':
         return '[error] ' + payload.message;
+      case 'queue_update':
+        return '[queue] steering=' + JSON.stringify(payload.steering);
       default:
         return '[' + event.type + ']';
     }
@@ -156,7 +168,11 @@
     if (!text || !sessionId) {
       return;
     }
-    send({ type: 'message.send', payload: { sessionId: sessionId, text: text } });
+    if (busy) {
+      send({ type: 'steer', payload: { sessionId: sessionId, text: text } });
+    } else {
+      send({ type: 'message.send', payload: { sessionId: sessionId, text: text } });
+    }
     input.value = '';
   });
 

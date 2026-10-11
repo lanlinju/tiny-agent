@@ -33,6 +33,8 @@ async function main(): Promise<void> {
   const echo = createLocalEchoTracker();
   let lastKind: LineKind | undefined;
   let streaming: { messageId: string; text: string } | undefined;
+  let busy = false;
+  let idleResolvers: Array<() => void> = [];
 
   const writeLine = (line: RenderLine): void => {
     if (line.kind === 'assistant' && lastKind !== 'assistant') {
@@ -59,6 +61,21 @@ async function main(): Promise<void> {
   };
 
   const render = (event: AgentEvent): void => {
+    if (event.type === 'turn.started') {
+      busy = true;
+    } else if (
+      event.type === 'turn.completed' ||
+      event.type === 'turn.interrupted' ||
+      event.type === 'error'
+    ) {
+      busy = false;
+      const resolvers = idleResolvers;
+      idleResolvers = [];
+      for (const resolve of resolvers) {
+        resolve();
+      }
+    }
+
     // Streaming text is rendered live and never persisted; the final
     // message.completed carries the full text into the transcript.
     if (event.type === 'message.delta') {
@@ -148,18 +165,25 @@ async function main(): Promise<void> {
         break;
       }
       if (text !== '') {
-        // Register before sending so an in-process reply cannot be missed.
-        const finished = nextEvent(
-          socket,
-          (event) => event.type === 'turn.completed' || event.type === 'error',
-        );
         echo.remember(text);
-        sendCommand(socket, { type: 'message.send', payload: { sessionId, text } });
-        await finished;
+        if (busy) {
+          // A run is in flight: queue this as steering for the current run.
+          sendCommand(socket, { type: 'steer', payload: { sessionId, text } });
+        } else {
+          busy = true;
+          sendCommand(socket, { type: 'message.send', payload: { sessionId, text } });
+        }
       }
       if (interactive && !rlClosed) {
         rl.prompt();
       }
+    }
+
+    // If the run is still going (e.g. piped /quit, or EOF), let it finish first.
+    if (busy) {
+      await new Promise<void>((resolve) => {
+        idleResolvers.push(resolve);
+      });
     }
   } finally {
     rl.close();

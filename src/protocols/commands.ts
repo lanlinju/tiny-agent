@@ -40,6 +40,15 @@ export const InterruptCommandSchema = CommandMetaSchema.extend({
   }).strict(),
 }).strict();
 
+/** Queue a steering message for a running session; injected before the next LLM call. */
+export const SteerCommandSchema = CommandMetaSchema.extend({
+  type: z.literal('steer'),
+  payload: z.object({
+    sessionId: z.string().min(1),
+    text: z.string().min(1),
+  }).strict(),
+}).strict();
+
 /** Client-to-server command schema shared by clients and server. */
 export const AgentCommandSchema = z.discriminatedUnion('type', [
   SessionCreateCommandSchema,
@@ -47,6 +56,7 @@ export const AgentCommandSchema = z.discriminatedUnion('type', [
   MessageSendCommandSchema,
   ApprovalRespondCommandSchema,
   InterruptCommandSchema,
+  SteerCommandSchema,
 ]);
 
 /** Client-to-server command type inferred from the zod schema. */
