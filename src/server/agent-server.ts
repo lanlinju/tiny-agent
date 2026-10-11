@@ -9,6 +9,7 @@ import { parseAgentCommand } from '../protocols/commands';
 import type { AgentEvent } from '../protocols/events';
 import { parseAgentEvent } from '../protocols/events';
 import type { SessionStore } from '../store/session-store';
+import { selectReplayEvents } from '../store/replay';
 import { createEventBus } from './event-bus';
 
 export interface AgentServerOptions {
@@ -99,13 +100,31 @@ export function createAgentServer(options: AgentServerOptions): AgentServer {
     await emit({ type: 'session.attached', ...meta(sessionId), payload: { sessionId } });
   }
 
-  async function attachSession(connection: AgentConnection, sessionId: string): Promise<void> {
-    if (!sessions.has(sessionId)) {
+  async function attachSession(
+    connection: AgentConnection,
+    sessionId: string,
+    since: number,
+  ): Promise<void> {
+    const stored = await options.store.read(sessionId);
+    if (!sessions.has(sessionId) && stored.length === 0) {
       sendTo(connection, serviceError(sessionId, `Unknown session: ${sessionId}`, 'unknown_session'));
       return;
     }
+    // Rehydrate the session from the store so attach survives a server restart.
+    sessions.add(sessionId);
     subscribe(connection, sessionId);
-    await emit({ type: 'session.attached', ...meta(sessionId), payload: { sessionId } });
+
+    // Replay persisted reasoning to this connection only: it is already stored,
+    // so it must not be re-appended or re-broadcast to other clients.
+    for (const event of selectReplayEvents(stored, since)) {
+      sendTo(connection, event);
+    }
+
+    await emit({
+      type: 'session.attached',
+      ...meta(sessionId),
+      payload: since > 0 ? { sessionId, replayFrom: since } : { sessionId },
+    });
   }
 
   async function sendMessage(
@@ -158,7 +177,7 @@ export function createAgentServer(options: AgentServerOptions): AgentServer {
         await createSession(connection);
         return;
       case 'session.attach':
-        await attachSession(connection, command.payload.sessionId);
+        await attachSession(connection, command.payload.sessionId, command.payload.since ?? 0);
         return;
       case 'message.send':
         await sendMessage(connection, command.payload.sessionId, command.payload.text);

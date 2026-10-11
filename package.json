@@ -12,6 +12,8 @@
     "preserver": "npm run build",
     "cli": "node --env-file-if-exists=.env dist/clients/cli/index.js",
     "precli": "npm run build",
+    "replay": "node --env-file-if-exists=.env dist/scripts/replay.js",
+    "prereplay": "npm run build",
     "test": "npm run build && node --test 'dist/test/**/*.test.js'",
     "check": "tsc --noEmit"
   },

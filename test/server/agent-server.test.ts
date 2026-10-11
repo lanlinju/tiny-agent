@@ -84,3 +84,26 @@ test('reports invalid commands directly to the offending connection', async () =
   }
   assert.equal(error.payload.code, 'invalid_command');
 });
+
+test('attach replays persisted history to the attaching connection only', async () => {
+  const server = createTestServer();
+  const a = makeConnection();
+
+  await server.handleRawCommand({ type: 'session.create', payload: {} }, a);
+  const sessionId = firstSessionId(a.events);
+  await server.handleRawCommand({ type: 'message.send', payload: { sessionId, text: 'first' } }, a);
+  const aTurnCount = a.events.filter((event) => event.type === 'turn.completed').length;
+
+  const b = makeConnection();
+  await server.handleRawCommand({ type: 'session.attach', payload: { sessionId } }, b);
+
+  // B receives the replayed reasoning chain, without control events.
+  assert.ok(b.events.some((event) => event.type === 'user.message' && event.payload.text === 'first'));
+  assert.ok(b.events.some((event) => event.type === 'tool.finished'));
+  assert.ok(b.events.some((event) => event.type === 'turn.completed'));
+  assert.equal(b.events.some((event) => event.type === 'session.created'), false);
+  // The attach boundary is the last event B receives.
+  assert.equal(b.events[b.events.length - 1]?.type, 'session.attached');
+  // A must not receive duplicated history.
+  assert.equal(a.events.filter((event) => event.type === 'turn.completed').length, aTurnCount);
+});
