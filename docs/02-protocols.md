@@ -36,8 +36,11 @@
 | `turn.started` | `goal` | `core` via `server` | `clients`, `store` |
 | `turn.completed` | `answer` | `core` via `server` | `clients`, `store` |
 | `turn.interrupted` | empty | `server` or `core` | `clients`, `store` |
-| `message.delta` | `messageId`, `text` | `llm`/`core` via `server` | `clients`, `store` |
+| `message.delta` | `messageId`, `text` | `llm`/`core` via `server` | `clients` |
 | `message.completed` | `messageId`, `role`, `content` | `core` | `clients`, `store` |
+| `reasoning.delta` | `messageId`, `text` | `llm`/`core` via `server` | `clients` |
+| `reasoning.completed` | `messageId`, `content` | `core` via `server` | `clients` |
+| `queue_update` | `steering` | `server` | `clients` |
 | `tool.started` | `toolCallId`, `tool`, `args` | `core` | `clients`, `store` |
 | `tool.finished` | `toolCallId`, `tool`, `result?`, `error?` | `core` | `clients`, `store` |
 | `approval.requested` | `approvalId`, `tool`, `args`, `timeoutMs` | `server` | `clients`, `store` |
@@ -53,6 +56,7 @@
 | `message.send` | `sessionId`, `text` | `clients` | `server` |
 | `approval.respond` | `approvalId`, `approved` | `clients` | `server` |
 | `interrupt` | `sessionId` | `clients` | `server` |
+| `steer` | `sessionId`, `text` | `clients` | `server` |
 
 ## 5. 校验边界
 

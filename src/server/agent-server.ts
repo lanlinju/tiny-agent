@@ -45,7 +45,7 @@ interface SessionState {
 const TRANSIENT_EVENT_TYPES = new Set<AgentEvent['type']>([
   'message.delta',
   'reasoning.delta',
-  'reasoning.completed',
+  // 'reasoning.completed',
   'queue_update',
 ]);
 
