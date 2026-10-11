@@ -10,7 +10,7 @@
     "owner": "local",
     "sessionDir": "sessions",
     "workspaceDir": ".",
-    "webDir": "clients/web",
+    "webDir": "dist/clients/web",
     "pluginDir": "plugins",
     "plugins": {
       "enabled": true,

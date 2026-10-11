@@ -6,7 +6,7 @@
   "type": "commonjs",
   "scripts": {
     "dev": "tsc --outDir dist && node dist/src/index.js",
-    "build": "tsc --outDir dist",
+    "build": "tsc --outDir dist && node scripts/build-web.mjs",
     "demo:core": "tsc --outDir dist && node dist/scripts/demo-core.js",
     "server": "node --env-file-if-exists=.env dist/src/server/main.js",
     "preserver": "npm run build",
@@ -15,7 +15,7 @@
     "replay": "node --env-file-if-exists=.env dist/scripts/replay.js",
     "prereplay": "npm run build",
     "test": "npm run build && node --test 'dist/test/**/*.test.js'",
-    "check": "tsc --noEmit"
+    "check": "tsc --noEmit && tsc --noEmit -p clients/web/tsconfig.json"
   },
   "dependencies": {
     "ws": "^8.18.0",
@@ -23,7 +23,14 @@
   },
   "devDependencies": {
     "@types/node": "^22.7.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
     "@types/ws": "^8.5.12",
+    "esbuild": "^0.28.2",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
     "typescript": "^5.6.3"
   },
   "engines": {

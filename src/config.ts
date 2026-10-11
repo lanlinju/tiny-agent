@@ -58,7 +58,7 @@ const AppConfigSchema = z.object({
     owner: z.string().min(1).default('local'),
     sessionDir: z.string().min(1).default('sessions'),
     workspaceDir: z.string().min(1).default('.'),
-    webDir: z.string().min(1).default('clients/web'),
+    webDir: z.string().min(1).default('dist/clients/web'),
     pluginDir: z.string().min(1).default('plugins'),
     plugins: z
       .object({
