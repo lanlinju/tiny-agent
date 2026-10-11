@@ -9,6 +9,7 @@ import { builtinTools } from '../tools/builtin';
 import { createFileSessionStore } from '../store/session-store';
 import { createAgentServer } from './agent-server';
 import { attachWebSocketServer } from './ws-handler';
+import { createAgentHttpServer } from './http-server';
 
 /**
  * Pick the LLM provider from configuration.
@@ -38,7 +39,7 @@ function createProvider(config: AppConfig): LLMProvider {
  */
 function main(): void {
   const config = loadConfig();
-  const { port, owner, sessionDir, workspaceDir, maxSteps } = config.server;
+  const { port, owner, sessionDir, workspaceDir, webDir, maxSteps } = config.server;
 
   const server = createAgentServer({
     llm: createProvider(config),
@@ -50,24 +51,28 @@ function main(): void {
     maxSteps,
   });
 
-  const wss = new WebSocketServer({ port });
+  const httpServer = createAgentHttpServer(webDir);
+  const wss = new WebSocketServer({ server: httpServer });
   attachWebSocketServer(wss, server);
 
-  wss.on('listening', () => {
+  httpServer.on('listening', () => {
     console.log(
-      `ready ws://localhost:${port} agent=${config.agentId} cwd=${workspaceDir} sessions=${sessionDir} tools=${builtinTools.length}`,
+      `ready ws://localhost:${port} web=http://localhost:${port} agent=${config.agentId} cwd=${workspaceDir} sessions=${sessionDir} tools=${builtinTools.length}`,
     );
   });
-  wss.on('error', (error) => {
+  httpServer.on('error', (error) => {
     console.error(`[server] ${error.message}`);
     process.exitCode = 1;
   });
 
   process.on('SIGINT', () => {
-    wss.close(() => {
+    wss.close();
+    httpServer.close(() => {
       process.exit(0);
     });
   });
+
+  httpServer.listen(port);
 }
 
 main();

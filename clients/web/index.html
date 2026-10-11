@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>tiny-agent</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header>
+      <h1>tiny-agent</h1>
+      <div class="meta">
+        <span id="status">connecting…</span>
+        <span id="session"></span>
+      </div>
+    </header>
+    <main>
+      <div id="log" aria-live="polite"></div>
+      <form id="composer">
+        <input id="input" autocomplete="off" placeholder="Type a message…" />
+        <button type="submit">Send</button>
+      </form>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>

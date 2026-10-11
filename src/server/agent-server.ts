@@ -9,7 +9,6 @@ import { parseAgentCommand } from '../protocols/commands';
 import type { AgentEvent } from '../protocols/events';
 import { parseAgentEvent } from '../protocols/events';
 import type { SessionStore } from '../store/session-store';
-import type { EventBus } from './event-bus';
 import { createEventBus } from './event-bus';
 
 export interface AgentServerOptions {
@@ -23,17 +22,24 @@ export interface AgentServerOptions {
   readonly now?: () => number;
 }
 
+/** A client connection that can receive events; implemented by the transport. */
+export interface AgentConnection {
+  send(event: AgentEvent): void;
+}
+
 export interface AgentServer {
-  readonly bus: EventBus;
-  /** Validate and dispatch a raw client command; invalid input becomes an error event. */
-  handleRawCommand(raw: unknown): Promise<void>;
+  /** Validate and dispatch a raw client command for a given connection. */
+  handleRawCommand(raw: unknown, connection: AgentConnection): Promise<void>;
+  /** Drop a connection and all of its session subscriptions. */
+  removeConnection(connection: AgentConnection): void;
 }
 
 /**
  * The only translation layer between clients and core.
  *
- * It owns sessions, command dispatch, event emission, store coordination and
- * (from phase 6) approval policy. It never implements LLM or tool internals.
+ * It owns sessions, command dispatch, per-session event routing, store
+ * coordination and (from phase 6) approval policy. It never implements LLM or
+ * tool internals, and it does not know about WebSocket or HTTP.
  */
 export function createAgentServer(options: AgentServerOptions): AgentServer {
   const bus = createEventBus();
@@ -43,6 +49,7 @@ export function createAgentServer(options: AgentServerOptions): AgentServer {
   const maxSteps = options.maxSteps ?? 8;
   const now = options.now ?? (() => Date.now());
   const sessions = new Set<string>();
+  const subscriptions = new Map<AgentConnection, Set<() => void>>();
 
   function meta(sessionId: string): Pick<AgentEvent, 'sessionId' | 'ts' | 'agentId' | 'owner'> {
     return { sessionId, ts: now(), agentId, owner };
@@ -55,28 +62,59 @@ export function createAgentServer(options: AgentServerOptions): AgentServer {
     bus.publish(validated);
   }
 
-  async function emitError(sessionId: string, message: string, code: string): Promise<void> {
-    await emit({ type: 'error', ...meta(sessionId), payload: { message, code } });
+  function sendTo(connection: AgentConnection, event: AgentEvent): void {
+    connection.send(parseAgentEvent(event));
   }
 
-  async function createSession(): Promise<void> {
+  function serviceError(sessionId: string, message: string, code: string): AgentEvent {
+    return { type: 'error', ...meta(sessionId), payload: { message, code } };
+  }
+
+  function subscribe(connection: AgentConnection, sessionId: string): void {
+    const unsubscribe = bus.subscribe(sessionId, (event) => connection.send(event));
+    let owned = subscriptions.get(connection);
+    if (!owned) {
+      owned = new Set();
+      subscriptions.set(connection, owned);
+    }
+    owned.add(unsubscribe);
+  }
+
+  function removeConnection(connection: AgentConnection): void {
+    const owned = subscriptions.get(connection);
+    if (!owned) {
+      return;
+    }
+    for (const unsubscribe of owned) {
+      unsubscribe();
+    }
+    subscriptions.delete(connection);
+  }
+
+  async function createSession(connection: AgentConnection): Promise<void> {
     const sessionId = `session-${randomUUID()}`;
     sessions.add(sessionId);
+    subscribe(connection, sessionId);
     await emit({ type: 'session.created', ...meta(sessionId), payload: { sessionId } });
     await emit({ type: 'session.attached', ...meta(sessionId), payload: { sessionId } });
   }
 
-  async function attachSession(sessionId: string): Promise<void> {
+  async function attachSession(connection: AgentConnection, sessionId: string): Promise<void> {
     if (!sessions.has(sessionId)) {
-      await emitError(sessionId, `Unknown session: ${sessionId}`, 'unknown_session');
+      sendTo(connection, serviceError(sessionId, `Unknown session: ${sessionId}`, 'unknown_session'));
       return;
     }
+    subscribe(connection, sessionId);
     await emit({ type: 'session.attached', ...meta(sessionId), payload: { sessionId } });
   }
 
-  async function sendMessage(sessionId: string, text: string): Promise<void> {
+  async function sendMessage(
+    connection: AgentConnection,
+    sessionId: string,
+    text: string,
+  ): Promise<void> {
     if (!sessions.has(sessionId)) {
-      await emitError(sessionId, `Unknown session: ${sessionId}`, 'unknown_session');
+      sendTo(connection, serviceError(sessionId, `Unknown session: ${sessionId}`, 'unknown_session'));
       return;
     }
 
@@ -91,11 +129,11 @@ export function createAgentServer(options: AgentServerOptions): AgentServer {
       llm: options.llm,
       tools: options.tools,
       systemPrompt: defaultSystemPrompt,
-      // Session memory/compaction is a later concern; phase 3 runs each turn from its goal.
+      // Session memory/compaction is a later concern; each turn runs from its goal.
       history: () => [],
       shouldCompact: () => false,
       compact: async (messages) => messages,
-      // Approval policy is server-owned but lands in phase 6; the demo time tool never asks.
+      // Approval policy is server-owned but lands in phase 6; tools run directly for now.
       needsApproval: () => false,
       requestApproval: async () => false,
       emit,
@@ -110,20 +148,20 @@ export function createAgentServer(options: AgentServerOptions): AgentServer {
         // core already emitted an error event before throwing; avoid duplicating it.
         return;
       }
-      await emitError(sessionId, formatError(error), 'turn_failed');
+      await emit(serviceError(sessionId, formatError(error), 'turn_failed'));
     }
   }
 
-  async function handleCommand(command: AgentCommand): Promise<void> {
+  async function handleCommand(command: AgentCommand, connection: AgentConnection): Promise<void> {
     switch (command.type) {
       case 'session.create':
-        await createSession();
+        await createSession(connection);
         return;
       case 'session.attach':
-        await attachSession(command.payload.sessionId);
+        await attachSession(connection, command.payload.sessionId);
         return;
       case 'message.send':
-        await sendMessage(command.payload.sessionId, command.payload.text);
+        await sendMessage(connection, command.payload.sessionId, command.payload.text);
         return;
       case 'approval.respond':
       case 'interrupt':
@@ -133,21 +171,20 @@ export function createAgentServer(options: AgentServerOptions): AgentServer {
   }
 
   return {
-    bus,
-    async handleRawCommand(raw) {
+    async handleRawCommand(raw, connection) {
       let command: AgentCommand;
       try {
         command = parseAgentCommand(raw);
       } catch (error) {
-        await emitError(
-          'invalid-command',
-          `Invalid command: ${formatError(error)}`,
-          'invalid_command',
+        sendTo(
+          connection,
+          serviceError('invalid-command', `Invalid command: ${formatError(error)}`, 'invalid_command'),
         );
         return;
       }
-      await handleCommand(command);
+      await handleCommand(command, connection);
     },
+    removeConnection,
   };
 }
 

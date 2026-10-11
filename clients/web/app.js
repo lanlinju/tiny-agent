@@ -1,0 +1,125 @@
+/* tiny-agent Web GUI (phase 7).
+ *
+ * Speaks the same protocol as the CLI over WebSocket: it sends AgentCommands
+ * and renders AgentEvents. It depends on no server/core code, only the wire
+ * protocol. Open with `?session=<id>` to attach to an existing session.
+ */
+(function () {
+  'use strict';
+
+  var params = new URLSearchParams(window.location.search);
+  var requestedSession = params.get('session') || '';
+  var protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  var url = protocol + '//' + window.location.host;
+
+  var statusEl = document.getElementById('status');
+  var sessionEl = document.getElementById('session');
+  var logEl = document.getElementById('log');
+  var form = document.getElementById('composer');
+  var input = document.getElementById('input');
+
+  var sessionId = '';
+  var socket = null;
+
+  function connect() {
+    socket = new WebSocket(url);
+
+    socket.addEventListener('open', function () {
+      statusEl.textContent = 'connected';
+      if (requestedSession) {
+        send({ type: 'session.attach', payload: { sessionId: requestedSession } });
+      } else {
+        send({ type: 'session.create', payload: {} });
+      }
+    });
+
+    socket.addEventListener('message', function (message) {
+      var event;
+      try {
+        event = JSON.parse(message.data);
+      } catch (error) {
+        return;
+      }
+      handleEvent(event);
+    });
+
+    socket.addEventListener('close', function () {
+      statusEl.textContent = 'disconnected — reconnecting…';
+      window.setTimeout(connect, 1000);
+    });
+
+    socket.addEventListener('error', function () {
+      statusEl.textContent = 'connection error';
+    });
+  }
+
+  function send(command) {
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify(command));
+    }
+  }
+
+  function handleEvent(event) {
+    if (event.type === 'session.created' || event.type === 'session.attached') {
+      sessionId = event.payload.sessionId;
+      sessionEl.textContent = 'session: ' + sessionId;
+    }
+    render(event);
+  }
+
+  function render(event) {
+    var line = document.createElement('div');
+    line.className = 'event event--' + event.type.replace('.', '-');
+    line.textContent = format(event);
+    logEl.appendChild(line);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  function format(event) {
+    var payload = event.payload || {};
+    switch (event.type) {
+      case 'session.created':
+        return '[session] created ' + payload.sessionId;
+      case 'session.attached':
+        return '[session] attached ' + payload.sessionId;
+      case 'user.message':
+        return 'you> ' + payload.text;
+      case 'turn.started':
+        return '[turn] ' + payload.goal;
+      case 'turn.completed':
+        return '[turn] completed';
+      case 'turn.interrupted':
+        return '[turn] interrupted';
+      case 'message.delta':
+        return payload.text;
+      case 'message.completed':
+        return '[agent] ' + payload.content;
+      case 'tool.started':
+        return '[tool] ' + payload.tool + ' ' + JSON.stringify(payload.args);
+      case 'tool.finished':
+        return payload.error !== undefined
+          ? '[tool] ' + payload.tool + ' error: ' + payload.error
+          : '[tool] ' + payload.tool + ' -> ' + JSON.stringify(payload.result);
+      case 'approval.requested':
+        return '[approval] requested ' + payload.tool;
+      case 'approval.resolved':
+        return '[approval] ' + (payload.approved ? 'approved' : 'denied');
+      case 'error':
+        return '[error] ' + payload.message;
+      default:
+        return '[' + event.type + ']';
+    }
+  }
+
+  form.addEventListener('submit', function (event) {
+    event.preventDefault();
+    var text = input.value.trim();
+    if (!text || !sessionId) {
+      return;
+    }
+    send({ type: 'message.send', payload: { sessionId: sessionId, text: text } });
+    input.value = '';
+  });
+
+  connect();
+})();

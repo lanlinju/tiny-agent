@@ -63,3 +63,21 @@ function isNotFound(error: unknown): boolean {
 function formatError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
+
+/** In-memory store used by tests and ephemeral runs. */
+export function createMemorySessionStore(): SessionStore {
+  const sessions = new Map<string, AgentEvent[]>();
+
+  return {
+    async append(event) {
+      const validated = parseAgentEvent(event);
+      const events = sessions.get(validated.sessionId) ?? [];
+      events.push(validated);
+      sessions.set(validated.sessionId, events);
+    },
+
+    async read(sessionId) {
+      return [...(sessions.get(sessionId) ?? [])];
+    },
+  };
+}

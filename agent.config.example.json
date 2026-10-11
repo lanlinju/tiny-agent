@@ -10,6 +10,7 @@
     "owner": "local",
     "sessionDir": "sessions",
     "workspaceDir": ".",
+    "webDir": "clients/web",
     "maxSteps": 8
   }
 }

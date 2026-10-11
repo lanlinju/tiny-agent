@@ -26,15 +26,33 @@ async function main(): Promise<void> {
     }
   });
 
-  const created = nextEvent(socket, (event) => event.type === 'session.created');
-  sendCommand(socket, { type: 'session.create', payload: {} });
-  const createdEvent = await created;
-  if (createdEvent.type !== 'session.created') {
-    throw new Error('Expected session.created from server');
+  const requestedSession =
+    process.argv[2]?.trim() || process.env.AGENT_SESSION?.trim() || '';
+  const ready = nextEvent(
+    socket,
+    (event) =>
+      event.type === 'session.created' ||
+      event.type === 'session.attached' ||
+      event.type === 'error',
+  );
+
+  if (requestedSession) {
+    sendCommand(socket, { type: 'session.attach', payload: { sessionId: requestedSession } });
+  } else {
+    sendCommand(socket, { type: 'session.create', payload: {} });
   }
-  const sessionId = createdEvent.payload.sessionId;
+
+  const readyEvent = await ready;
+  if (readyEvent.type === 'error') {
+    throw new Error(readyEvent.payload.message);
+  }
+  if (readyEvent.type !== 'session.created' && readyEvent.type !== 'session.attached') {
+    throw new Error('Expected a session event from server');
+  }
+  const sessionId = readyEvent.payload.sessionId;
 
   console.log(`connected ${url} session=${sessionId}`);
+  console.log(`web GUI: http://localhost:${port}/?session=${sessionId}`);
   console.log('type a message, /quit to exit');
 
   const rl = createInterface({ input: process.stdin, output: process.stdout });

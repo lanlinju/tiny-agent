@@ -1,24 +1,26 @@
 import type { WebSocket, WebSocketServer } from 'ws';
-import type { AgentEvent } from '../protocols/events';
-import type { AgentServer } from './agent-server';
+import type { AgentConnection, AgentServer } from './agent-server';
 
 /**
  * Transport adapter: WebSocket in, commands to the server, events back out.
  *
- * It carries no business logic; raw frames are handed to the server, which
- * performs runtime validation.
+ * Each socket is represented to the server as an `AgentConnection`. The server
+ * decides which sessions that connection is subscribed to; this file carries no
+ * business logic and does not validate commands.
  */
 export function attachWebSocketServer(wss: WebSocketServer, server: AgentServer): void {
   wss.on('connection', (socket) => {
-    const unsubscribe = server.bus.subscribe((event) => {
-      sendEvent(socket, event);
-    });
+    const connection: AgentConnection = {
+      send(event) {
+        sendEvent(socket, event);
+      },
+    };
 
     socket.on('message', (data) => {
-      void handleMessage(server, data.toString());
+      void handleMessage(server, connection, data.toString());
     });
     socket.on('close', () => {
-      unsubscribe();
+      server.removeConnection(connection);
     });
     socket.on('error', (error) => {
       console.error(`[ws] socket error: ${formatError(error)}`);
@@ -26,7 +28,11 @@ export function attachWebSocketServer(wss: WebSocketServer, server: AgentServer)
   });
 }
 
-async function handleMessage(server: AgentServer, raw: string): Promise<void> {
+async function handleMessage(
+  server: AgentServer,
+  connection: AgentConnection,
+  raw: string,
+): Promise<void> {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
@@ -34,10 +40,10 @@ async function handleMessage(server: AgentServer, raw: string): Promise<void> {
     console.error(`[ws] dropped non-JSON message: ${formatError(error)}`);
     return;
   }
-  await server.handleRawCommand(parsed);
+  await server.handleRawCommand(parsed, connection);
 }
 
-function sendEvent(socket: WebSocket, event: AgentEvent): void {
+function sendEvent(socket: WebSocket, event: unknown): void {
   if (socket.readyState !== socket.OPEN) {
     return;
   }
