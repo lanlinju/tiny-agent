@@ -6,7 +6,12 @@
   "type": "commonjs",
   "scripts": {
     "dev": "tsc --outDir dist && node dist/src/index.js",
+    "build": "tsc --outDir dist",
     "demo:core": "tsc --outDir dist && node dist/scripts/demo-core.js",
+    "server": "node dist/src/server/main.js",
+    "preserver": "npm run build",
+    "cli": "node dist/clients/cli/index.js",
+    "precli": "npm run build",
     "check": "tsc --noEmit"
   },
   "dependencies": {

@@ -3,6 +3,14 @@ import { JsonValueSchema } from '../protocols/events';
 import type { Message, ToolCall } from '../llm/provider';
 import type { RunContext } from './types';
 
+/** Thrown when the loop exceeds RunContext.maxSteps after emitting an error event. */
+export class MaxStepsExceededError extends Error {
+  constructor(maxSteps: number) {
+    super(`Agent exceeded max steps (${maxSteps})`);
+    this.name = 'MaxStepsExceededError';
+  }
+}
+
 /** Run the minimal ReAct-style agent loop until no tool call remains. */
 export async function runLoop(ctx: RunContext, goal: string): Promise<string> {
   let messages: Message[] = [
@@ -37,7 +45,7 @@ export async function runLoop(ctx: RunContext, goal: string): Promise<string> {
   }
 
   await emitError(ctx, '超过最大步数', 'max_steps_exceeded');
-  throw new Error('Agent 未能完成任务');
+  throw new MaxStepsExceededError(ctx.maxSteps);
 }
 
 async function handleToolCall(
