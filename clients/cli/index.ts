@@ -78,11 +78,11 @@ async function main(): Promise<void> {
 
     // Streaming text is rendered live and never persisted; the final
     // message.completed carries the full text into the transcript.
+    if (event.type === 'reasoning.delta' || event.type === 'reasoning.completed') {
+      return; // the CLI has no thinking UI
+    }
+
     if (event.type === 'message.delta') {
-      // The CLI has no thinking toggle; ignore reasoning deltas here.
-      if (event.payload.channel === 'reasoning') {
-        return;
-      }
       renderDelta(event.payload.messageId, event.payload.text);
       return;
     }

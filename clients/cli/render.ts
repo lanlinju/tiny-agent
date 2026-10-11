@@ -33,6 +33,10 @@ export function formatEvent(event: AgentEvent): string {
       return '[turn] interrupted';
     case 'message.delta':
       return event.payload.text;
+    case 'reasoning.delta':
+      return `[thinking] ${event.payload.text}`;
+    case 'reasoning.completed':
+      return `[thinking] ${event.payload.content}`;
     case 'message.completed':
       return `[assistant] ${event.payload.content}`;
     case 'tool.started':
@@ -106,6 +110,9 @@ export function presentEvent(event: AgentEvent, options: RenderOptions): RenderL
       return [{ kind: 'lifecycle', text: '· turn interrupted' }];
     case 'message.delta':
       return [{ kind: 'delta', text: event.payload.text }];
+    case 'reasoning.delta':
+    case 'reasoning.completed':
+      return [];
     case 'message.completed': {
       const content = event.payload.content.replace(/\n+$/, '');
       if (content === '') {

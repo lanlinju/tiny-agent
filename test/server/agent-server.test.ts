@@ -160,7 +160,7 @@ test('queues a steer sent immediately after a message', async () => {
   );
 });
 
-test('thinking mode streams reasoning on a separate channel', async () => {
+test('thinking mode emits reasoning.delta and reasoning.completed', async () => {
   let sawReasoningFlag = false;
   const llm: LLMProvider = {
     async chat({ reasoning, onDelta, onReasoningDelta }) {
@@ -168,7 +168,7 @@ test('thinking mode streams reasoning on a separate channel', async () => {
       await onReasoningDelta?.('plan ');
       await onReasoningDelta?.('carefully');
       await onDelta?.('answer');
-      return { role: 'assistant', content: 'answer', toolCalls: [] };
+      return { role: 'assistant', content: 'answer', toolCalls: [], reasoning: 'plan carefully' };
     },
   };
   const store = createMemorySessionStore();
@@ -185,19 +185,23 @@ test('thinking mode streams reasoning on a separate channel', async () => {
 
   const reasoningDeltas: string[] = [];
   const contentDeltas: string[] = [];
+  let reasoningCompleted: string | undefined;
   for (const event of connection.events) {
-    if (event.type === 'message.delta') {
-      if (event.payload.channel === 'reasoning') {
-        reasoningDeltas.push(event.payload.text);
-      } else {
-        contentDeltas.push(event.payload.text);
-      }
+    if (event.type === 'reasoning.delta') {
+      reasoningDeltas.push(event.payload.text);
+    } else if (event.type === 'message.delta') {
+      contentDeltas.push(event.payload.text);
+    } else if (event.type === 'reasoning.completed') {
+      reasoningCompleted = event.payload.content;
     }
   }
   assert.deepEqual(reasoningDeltas, ['plan ', 'carefully']);
   assert.deepEqual(contentDeltas, ['answer']);
+  assert.equal(reasoningCompleted, 'plan carefully');
 
   const stored = await store.read(sessionId);
+  assert.equal(stored.some((event) => event.type === 'reasoning.delta'), false);
+  assert.equal(stored.some((event) => event.type === 'reasoning.completed'), false);
   assert.equal(stored.some((event) => event.type === 'message.delta'), false);
 });
 

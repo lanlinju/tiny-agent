@@ -68,7 +68,6 @@ export const MessageDeltaEventSchema = EventMetaSchema.extend({
   payload: z.object({
     messageId: z.string().min(1),
     text: z.string(),
-    channel: z.enum(['content', 'reasoning']).optional(),
   }).strict(),
 }).strict();
 
@@ -77,6 +76,24 @@ export const MessageCompletedEventSchema = EventMetaSchema.extend({
   payload: z.object({
     messageId: z.string().min(1),
     role: MessageRoleSchema,
+    content: z.string(),
+  }).strict(),
+}).strict();
+
+/** Streaming reasoning/thinking text for an assistant message. Transient: not persisted. */
+export const ReasoningDeltaEventSchema = EventMetaSchema.extend({
+  type: z.literal('reasoning.delta'),
+  payload: z.object({
+    messageId: z.string().min(1),
+    text: z.string(),
+  }).strict(),
+}).strict();
+
+/** Final reasoning/thinking text for an assistant message. Transient: not persisted. */
+export const ReasoningCompletedEventSchema = EventMetaSchema.extend({
+  type: z.literal('reasoning.completed'),
+  payload: z.object({
+    messageId: z.string().min(1),
     content: z.string(),
   }).strict(),
 }).strict();
@@ -144,6 +161,8 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
   TurnInterruptedEventSchema,
   MessageDeltaEventSchema,
   MessageCompletedEventSchema,
+  ReasoningDeltaEventSchema,
+  ReasoningCompletedEventSchema,
   ToolStartedEventSchema,
   ToolFinishedEventSchema,
   ApprovalRequestedEventSchema,

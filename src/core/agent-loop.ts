@@ -31,9 +31,13 @@ export async function runLoop(ctx: RunContext, goal: string): Promise<string> {
       messages,
       tools: ctx.tools.schemas(),
       reasoning: ctx.reasoning,
-      onDelta: (text) => emitMessageDelta(ctx, messageId, text, 'content'),
-      onReasoningDelta: (text) => emitMessageDelta(ctx, messageId, text, 'reasoning'),
+      onDelta: (text) => emitMessageDelta(ctx, messageId, text),
+      onReasoningDelta: (text) => emitReasoningDelta(ctx, messageId, text),
     });
+
+    if (response.reasoning !== undefined && response.reasoning !== '') {
+      await emitReasoningCompleted(ctx, messageId, response.reasoning);
+    }
 
     messages.push(response);
     await emitMessageCompleted(ctx, messageId, response.content);
@@ -150,13 +154,20 @@ async function emitMessageCompleted(
   });
 }
 
-async function emitMessageDelta(
+async function emitMessageDelta(ctx: RunContext, messageId: string, text: string): Promise<void> {
+  await ctx.emit({ type: 'message.delta', ...meta(ctx), payload: { messageId, text } });
+}
+
+async function emitReasoningDelta(ctx: RunContext, messageId: string, text: string): Promise<void> {
+  await ctx.emit({ type: 'reasoning.delta', ...meta(ctx), payload: { messageId, text } });
+}
+
+async function emitReasoningCompleted(
   ctx: RunContext,
   messageId: string,
-  text: string,
-  channel: 'content' | 'reasoning',
+  content: string,
 ): Promise<void> {
-  await ctx.emit({ type: 'message.delta', ...meta(ctx), payload: { messageId, text, channel } });
+  await ctx.emit({ type: 'reasoning.completed', ...meta(ctx), payload: { messageId, content } });
 }
 
 async function emitToolStarted(

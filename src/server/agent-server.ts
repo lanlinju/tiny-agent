@@ -42,7 +42,12 @@ interface SessionState {
 }
 
 /** Events that are broadcast but never written to events.jsonl. */
-const TRANSIENT_EVENT_TYPES = new Set<AgentEvent['type']>(['message.delta', 'queue_update']);
+const TRANSIENT_EVENT_TYPES = new Set<AgentEvent['type']>([
+  'message.delta',
+  'reasoning.delta',
+  'reasoning.completed',
+  'queue_update',
+]);
 
 /**
  * The only translation layer between clients and core.

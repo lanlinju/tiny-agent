@@ -85,8 +85,14 @@ export function useAgent(requestedSession: string): AgentController {
         setQueued(0);
         break;
       case 'message.delta':
+        setItems((prev) => applyDelta(prev, event.payload.messageId, 'content', event.payload.text));
+        break;
+      case 'reasoning.delta':
+        setItems((prev) => applyDelta(prev, event.payload.messageId, 'reasoning', event.payload.text));
+        break;
+      case 'reasoning.completed':
         setItems((prev) =>
-          applyDelta(prev, event.payload.messageId, event.payload.channel ?? 'content', event.payload.text),
+          completeReasoning(prev, event.payload.messageId, event.payload.content),
         );
         break;
       case 'message.completed':
@@ -233,6 +239,23 @@ function applyDelta(
     channel === 'reasoning'
       ? { ...current, reasoning: current.reasoning + text }
       : { ...current, text: current.text + text };
+  return copy;
+}
+
+function completeReasoning(items: Item[], messageId: string, content: string): Item[] {
+  const index = findAssistant(items, messageId);
+  const base = index === -1 ? [...items, newAssistant(messageId)] : items;
+  const at = index === -1 ? base.length - 1 : index;
+  const current = base[at];
+  if (current === undefined || current.kind !== 'assistant') {
+    return items;
+  }
+  const copy = [...base];
+  copy[at] = {
+    ...current,
+    reasoning: content !== '' ? content : current.reasoning,
+    reasoningDone: true,
+  };
   return copy;
 }
 
