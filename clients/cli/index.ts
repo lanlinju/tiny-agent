@@ -32,6 +32,7 @@ async function main(): Promise<void> {
   const interactive = process.stdin.isTTY === true;
   const echo = createLocalEchoTracker();
   let lastKind: LineKind | undefined;
+  let streaming: { messageId: string; text: string } | undefined;
 
   const writeLine = (line: RenderLine): void => {
     if (line.kind === 'assistant' && lastKind !== 'assistant') {
@@ -42,7 +43,29 @@ async function main(): Promise<void> {
     lastKind = line.kind;
   };
 
+  const renderDelta = (messageId: string, text: string): void => {
+    if (!streaming || streaming.messageId !== messageId) {
+      if (lastKind !== 'assistant') {
+        process.stdout.write('\n');
+      }
+      streaming = { messageId, text: '' };
+      if (args.timestamps) {
+        process.stdout.write(`${timestamp()} `);
+      }
+    }
+    streaming.text += text;
+    process.stdout.write(colorize('assistant', text, colorEnabled));
+    lastKind = 'assistant';
+  };
+
   const render = (event: AgentEvent): void => {
+    // Streaming text is rendered live and never persisted; the final
+    // message.completed carries the full text into the transcript.
+    if (event.type === 'message.delta') {
+      renderDelta(event.payload.messageId, event.payload.text);
+      return;
+    }
+
     // The transcript is always complete and uncolored (source: formatEvent).
     transcript?.write(formatEvent(event));
 
@@ -52,6 +75,13 @@ async function main(): Promise<void> {
       }
       const prefix = interactive ? '[user] ' : 'you> ';
       writeLine({ kind: 'user', text: `${prefix}${event.payload.text}` });
+      return;
+    }
+
+    if (event.type === 'message.completed' && streaming?.messageId === event.payload.messageId) {
+      process.stdout.write('\n');
+      streaming = undefined;
+      lastKind = 'assistant';
       return;
     }
 

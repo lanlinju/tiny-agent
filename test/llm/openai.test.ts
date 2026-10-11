@@ -114,3 +114,61 @@ test('throws with status and body when the API returns an error', async () => {
     /401 Unauthorized.*bad key/,
   );
 });
+
+function sseResponse(chunks: readonly string[]): Response {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const chunk of chunks) {
+        controller.enqueue(encoder.encode(chunk));
+      }
+      controller.close();
+    },
+  });
+  return new Response(stream, { status: 200, headers: { 'content-type': 'text/event-stream' } });
+}
+
+test('streams assistant text and assembles tool calls from SSE', async () => {
+  const deltas: string[] = [];
+  let requestBody: Record<string, unknown> | undefined;
+
+  const fetchImpl: typeof fetch = async (_input, init) => {
+    requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    return sseResponse([
+      'data: {"choices":[{"delta":{"content":"Hel"}}]}\n\n',
+      'data: {"choices":[{"delta":{"content":"lo"}}]}\n\n',
+      'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"time","arguments":""}}]}}]}\n\n',
+      'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{}"}}]}}]}\n\n',
+      'data: [DONE]\n\n',
+    ]);
+  };
+
+  const llm = createOpenAICompatibleLLM({ apiKey: 'k', model: 'm', fetchImpl });
+  const reply = await llm.chat({
+    messages: [{ role: 'user', content: 'hi' }],
+    onDelta: (text) => {
+      deltas.push(text);
+    },
+  });
+
+  assert.equal(requestBody?.stream, true);
+  assert.deepEqual(deltas, ['Hel', 'lo']);
+  assert.equal(reply.content, 'Hello');
+  assert.deepEqual(reply.toolCalls, [
+    { id: 'call_1', type: 'function', function: { name: 'time', arguments: '{}' } },
+  ]);
+});
+
+test('does not set stream when no delta handler is given', async () => {
+  let requestBody: Record<string, unknown> | undefined;
+  const fetchImpl: typeof fetch = async (_input, init) => {
+    requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    return new Response(JSON.stringify({ choices: [{ message: { content: 'done' } }] }), {
+      status: 200,
+    });
+  };
+
+  const llm = createOpenAICompatibleLLM({ apiKey: 'k', model: 'm', fetchImpl });
+  await llm.chat({ messages: [{ role: 'user', content: 'hi' }] });
+  assert.equal(requestBody?.stream, undefined);
+});

@@ -4,6 +4,7 @@ import { createAgentServer } from '../../src/server/agent-server';
 import type { AgentConnection } from '../../src/server/agent-server';
 import { createMemorySessionStore } from '../../src/store/session-store';
 import { createMockLLM } from '../../src/llm/mock';
+import type { LLMProvider } from '../../src/llm/provider';
 import { createToolRegistry } from '../../src/tools/registry';
 import { timeTool } from '../../src/tools/builtin/time';
 import type { AgentEvent } from '../../src/protocols/events';
@@ -28,6 +29,49 @@ function firstSessionId(events: readonly AgentEvent[]): string {
   }
   throw new Error('no session.created event received');
 }
+
+test('broadcasts streaming deltas but does not persist them', async () => {
+  const streamingLlm: LLMProvider = {
+    async chat({ onDelta }) {
+      await onDelta?.('Hel');
+      await onDelta?.('lo');
+      return { role: 'assistant', content: 'Hello', toolCalls: [] };
+    },
+  };
+  const store = createMemorySessionStore();
+  const server = createAgentServer({
+    llm: streamingLlm,
+    tools: createToolRegistry([]),
+    store,
+    owner: 'test',
+  });
+
+  const connection = makeConnection();
+  await server.handleRawCommand({ type: 'session.create', payload: {} }, connection);
+  const sessionId = firstSessionId(connection.events);
+  await server.handleRawCommand({ type: 'message.send', payload: { sessionId, text: 'hi' } }, connection);
+
+  const deltaTexts: string[] = [];
+  const deltaIds: string[] = [];
+  let completedContent: string | undefined;
+  for (const event of connection.events) {
+    if (event.type === 'message.delta') {
+      deltaTexts.push(event.payload.text);
+      deltaIds.push(event.payload.messageId);
+    }
+    if (event.type === 'message.completed') {
+      completedContent = event.payload.content;
+    }
+  }
+
+  assert.deepEqual(deltaTexts, ['Hel', 'lo']);
+  assert.equal(new Set(deltaIds).size, 1);
+  assert.equal(completedContent, 'Hello');
+
+  const stored = await store.read(sessionId);
+  assert.equal(stored.some((event) => event.type === 'message.delta'), false);
+  assert.ok(stored.some((event) => event.type === 'message.completed'));
+});
 
 function createTestServer() {
   return createAgentServer({

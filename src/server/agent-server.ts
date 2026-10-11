@@ -59,7 +59,10 @@ export function createAgentServer(options: AgentServerOptions): AgentServer {
   async function emit(event: AgentEvent): Promise<void> {
     // Validation boundary: broadcast only validated events, and persist the same bytes.
     const validated = parseAgentEvent(event);
-    await options.store.append(validated);
+    // Streaming deltas are transient: broadcast them, but keep events.jsonl clean.
+    if (validated.type !== 'message.delta') {
+      await options.store.append(validated);
+    }
     bus.publish(validated);
   }
 

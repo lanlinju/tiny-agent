@@ -40,10 +40,18 @@ export interface AssistantMessage extends Message {
   readonly toolCalls: readonly ToolCall[];
 }
 
+/** Incremental assistant text callback used by streaming providers. */
+export type ChatDeltaHandler = (text: string) => void | Promise<void>;
+
+/** Request passed to a provider's `chat`. */
+export interface ChatRequest {
+  readonly messages: readonly Message[];
+  readonly tools?: readonly ToolSchema[];
+  /** When provided, the provider may stream assistant text incrementally. */
+  readonly onDelta?: ChatDeltaHandler;
+}
+
 /** Replaceable LLM provider boundary. */
 export interface LLMProvider {
-  chat(req: {
-    readonly messages: readonly Message[];
-    readonly tools?: readonly ToolSchema[];
-  }): Promise<AssistantMessage>;
+  chat(req: ChatRequest): Promise<AssistantMessage>;
 }

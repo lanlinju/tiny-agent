@@ -26,13 +26,15 @@ export async function runLoop(ctx: RunContext, goal: string): Promise<string> {
       messages = [...await ctx.compact(messages)];
     }
 
+    const messageId = ctx.nextId('message');
     const response = await ctx.llm.chat({
       messages,
       tools: ctx.tools.schemas(),
+      onDelta: (text) => emitMessageDelta(ctx, messageId, text),
     });
 
     messages.push(response);
-    await emitMessageCompleted(ctx, response.content);
+    await emitMessageCompleted(ctx, messageId, response.content);
 
     if (response.toolCalls.length === 0) {
       await emitTurnCompleted(ctx, response.content);
@@ -129,12 +131,20 @@ async function emitTurnCompleted(ctx: RunContext, answer: string): Promise<void>
   await ctx.emit({ type: 'turn.completed', ...meta(ctx), payload: { answer } });
 }
 
-async function emitMessageCompleted(ctx: RunContext, content: string): Promise<void> {
+async function emitMessageCompleted(
+  ctx: RunContext,
+  messageId: string,
+  content: string,
+): Promise<void> {
   await ctx.emit({
     type: 'message.completed',
     ...meta(ctx),
-    payload: { messageId: ctx.nextId('message'), role: 'assistant', content },
+    payload: { messageId, role: 'assistant', content },
   });
+}
+
+async function emitMessageDelta(ctx: RunContext, messageId: string, text: string): Promise<void> {
+  await ctx.emit({ type: 'message.delta', ...meta(ctx), payload: { messageId, text } });
 }
 
 async function emitToolStarted(

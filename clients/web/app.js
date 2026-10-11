@@ -20,6 +20,7 @@
 
   var sessionId = '';
   var socket = null;
+  var streaming = null; // { id, el } while an assistant message streams in
 
   function connect() {
     socket = new WebSocket(url);
@@ -68,10 +69,48 @@
   }
 
   function render(event) {
+    // Streaming text accumulates in one bubble until the message completes.
+    if (event.type === 'message.delta') {
+      appendDelta(event.payload.messageId, event.payload.text);
+      return;
+    }
+
+    if (event.type === 'message.completed') {
+      if (streaming && streaming.id === event.payload.messageId) {
+        streaming.el.textContent = event.payload.content;
+        streaming = null;
+        scrollLog();
+        return;
+      }
+      streaming = null;
+      appendLine('event--message-completed', format(event));
+      return;
+    }
+
+    streaming = null;
+    appendLine('event--' + event.type.replace('.', '-'), format(event));
+  }
+
+  function appendDelta(messageId, text) {
+    if (!streaming || streaming.id !== messageId) {
+      var el = document.createElement('div');
+      el.className = 'event event--assistant';
+      logEl.appendChild(el);
+      streaming = { id: messageId, el: el };
+    }
+    streaming.el.textContent += text;
+    scrollLog();
+  }
+
+  function appendLine(className, text) {
     var line = document.createElement('div');
-    line.className = 'event event--' + event.type.replace('.', '-');
-    line.textContent = format(event);
+    line.className = 'event ' + className;
+    line.textContent = text;
     logEl.appendChild(line);
+    scrollLog();
+  }
+
+  function scrollLog() {
     logEl.scrollTop = logEl.scrollHeight;
   }
 
