@@ -121,7 +121,12 @@ button.ghost:hover {
   padding: 28px 20px 12px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 8px;
+}
+
+/* Keep a larger break between turns, at each new user message. */
+.thread > .msg-user:not(:first-child) {
+  margin-top: 14px;
 }
 
 .msg-user {
@@ -261,7 +266,7 @@ button.ghost:hover {
   border: 1px solid var(--border);
   background: var(--bg-soft);
   border-radius: 12px;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
   overflow: hidden;
 }
 
