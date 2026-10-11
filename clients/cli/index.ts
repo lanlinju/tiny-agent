@@ -4,7 +4,8 @@ import { WebSocket } from 'ws';
 import type { AgentCommand } from '../../src/protocols/commands';
 import { parseAgentCommand } from '../../src/protocols/commands';
 import type { AgentEvent } from '../../src/protocols/events';
-import { formatError, formatEvent, parseEvent, renderEvent } from './render';
+import { colorize, formatError, formatEvent, parseEvent, presentEvent } from './render';
+import type { LineKind, RenderOptions } from './render';
 import { createTranscript } from './transcript';
 
 /**
@@ -17,22 +18,49 @@ const port = Number(process.env.AGENT_PORT ?? 3987);
 const url = process.env.AGENT_WS_URL ?? `ws://localhost:${port}`;
 
 async function main(): Promise<void> {
-  const { sessionId: sessionArg, logFile } = parseArgs(process.argv.slice(2));
-  const transcript = createTranscript(logFile);
+  const args = parseArgs(process.argv.slice(2));
+  const transcript = createTranscript(args.logFile);
+
+  const renderOptions: RenderOptions = {
+    verbose: args.verbose,
+    maxOutputLines: args.maxOutputLines,
+  };
+  const colorEnabled =
+    args.color ?? (process.stdout.isTTY === true && process.env.NO_COLOR === undefined);
+  // In a real terminal the input is echoed by readline, so we suppress the
+  // rendered user line and rely on the prompt. When piped, show it explicitly.
+  const interactive = process.stdin.isTTY === true;
+  const suppressUser = interactive;
+  let lastKind: LineKind | undefined;
+
+  const render = (event: AgentEvent): void => {
+    // The transcript is always complete and uncolored (source: formatEvent).
+    transcript?.write(formatEvent(event));
+
+    for (const line of presentEvent(event, renderOptions)) {
+      if (suppressUser && line.kind === 'user') {
+        continue;
+      }
+      if (line.kind === 'assistant' && lastKind !== 'assistant') {
+        process.stdout.write('\n');
+      }
+      const stamp = args.timestamps ? `${timestamp()} ` : '';
+      process.stdout.write(`${stamp}${colorize(line.kind, line.text, colorEnabled)}\n`);
+      lastKind = line.kind;
+    }
+  };
 
   const socket = new WebSocket(url);
   await once(socket, 'open');
 
   socket.on('message', (data) => {
     const event = parseEvent(String(data));
-    if (!event) {
-      return;
+    if (event) {
+      render(event);
     }
-    renderEvent(event);
-    transcript?.write(formatEvent(event));
   });
 
-  const requestedSession = sessionArg || process.env.AGENT_SESSION?.trim() || '';
+  const requestedSession = args.sessionId || process.env.AGENT_SESSION?.trim() || '';
   const ready = nextEvent(
     socket,
     (event) =>
@@ -58,8 +86,8 @@ async function main(): Promise<void> {
 
   console.log(`connected ${url} session=${sessionId}`);
   console.log(`web GUI: http://localhost:${port}/?session=${sessionId}`);
-  if (logFile) {
-    console.log(`transcript: ${logFile}`);
+  if (args.logFile) {
+    console.log(`transcript: ${args.logFile}`);
   }
   transcript?.write(`# session=${sessionId} started ${new Date().toISOString()}`);
   console.log('type a message, /quit to exit');
@@ -69,8 +97,10 @@ async function main(): Promise<void> {
   rl.on('close', () => {
     rlClosed = true;
   });
-  rl.setPrompt('you> ');
-  rl.prompt();
+  if (interactive) {
+    rl.setPrompt('you> ');
+    rl.prompt();
+  }
   try {
     for await (const line of lines(rl)) {
       const text = line.trim();
@@ -86,7 +116,7 @@ async function main(): Promise<void> {
         sendCommand(socket, { type: 'message.send', payload: { sessionId, text } });
         await finished;
       }
-      if (!rlClosed) {
+      if (interactive && !rlClosed) {
         rl.prompt();
       }
     }
@@ -97,10 +127,23 @@ async function main(): Promise<void> {
   }
 }
 
-/** Parse CLI args; positional is the session id, `--log` sets the transcript path. */
-function parseArgs(argv: readonly string[]): { sessionId: string; logFile: string } {
+/** CLI arguments; positional is the session id. */
+interface CliArgs {
+  readonly sessionId: string;
+  readonly logFile: string;
+  readonly verbose: boolean;
+  readonly color: boolean | undefined;
+  readonly timestamps: boolean;
+  readonly maxOutputLines: number;
+}
+
+function parseArgs(argv: readonly string[]): CliArgs {
   let sessionId = '';
   let logFile = process.env.AGENT_LOG_FILE?.trim() ?? '';
+  let verbose = false;
+  let color: boolean | undefined;
+  let timestamps = false;
+  let maxOutputLines = 40;
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index] ?? '';
@@ -109,12 +152,34 @@ function parseArgs(argv: readonly string[]): { sessionId: string; logFile: strin
       index += 1;
     } else if (arg.startsWith('--log=')) {
       logFile = arg.slice('--log='.length).trim();
+    } else if (arg === '--verbose' || arg === '-v') {
+      verbose = true;
+    } else if (arg === '--color') {
+      color = true;
+    } else if (arg === '--no-color') {
+      color = false;
+    } else if (arg === '--timestamps') {
+      timestamps = true;
+    } else if (arg === '--max-output') {
+      maxOutputLines = parsePositiveInt(argv[index + 1], maxOutputLines);
+      index += 1;
+    } else if (arg.startsWith('--max-output=')) {
+      maxOutputLines = parsePositiveInt(arg.slice('--max-output='.length), maxOutputLines);
     } else if (!arg.startsWith('-') && sessionId === '') {
       sessionId = arg;
     }
   }
 
-  return { sessionId, logFile };
+  return { sessionId, logFile, verbose, color, timestamps, maxOutputLines };
+}
+
+function parsePositiveInt(value: string | undefined, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
+}
+
+function timestamp(): string {
+  return new Date().toTimeString().slice(0, 8);
 }
 
 function once(socket: WebSocket, event: 'open'): Promise<void> {
