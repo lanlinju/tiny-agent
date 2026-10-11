@@ -210,10 +210,6 @@ function Composer({
             <IconThink />
             深度思考
           </button>
-          <button type="button" className="chip chip--muted" disabled title="联网搜索暂未实现">
-            <IconGlobe />
-            智能搜索
-          </button>
           <span className="spacer" />
           <button type="button" className="icon-btn" disabled title="附件暂未实现" aria-label="附件">
             <IconClip />
@@ -261,16 +257,6 @@ function IconThink() {
       <ellipse cx="12" cy="12" rx="9" ry="3.8" />
       <ellipse cx="12" cy="12" rx="9" ry="3.8" transform="rotate(60 12 12)" />
       <ellipse cx="12" cy="12" rx="9" ry="3.8" transform="rotate(-60 12 12)" />
-    </svg>
-  );
-}
-
-function IconGlobe() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-      <circle cx="12" cy="12" r="9" />
-      <path d="M3 12h18" />
-      <path d="M12 3c3 3.5 3 14.5 0 18c-3-3.5-3-14.5 0-18Z" />
     </svg>
   );
 }

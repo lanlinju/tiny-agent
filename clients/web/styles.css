@@ -458,18 +458,6 @@ button.ghost:hover {
   background: var(--accent-soft);
 }
 
-.chip--muted {
-  color: var(--text-faint);
-  border-color: var(--border);
-  opacity: 0.8;
-  cursor: default;
-}
-
-.chip--muted:hover {
-  border-color: var(--border);
-  color: var(--text-faint);
-}
-
 .icon-btn {
   width: 34px;
   height: 34px;
