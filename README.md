@@ -1,6 +1,6 @@
 # tiny-agent
 
-一个**本地优先、分层清晰**的编码 Agent 脚手架：自带极简 ReAct 循环、OpenAI 兼容 LLM（含流式与思考）、4 个内置工具、插件系统、事件存储与回放，以及 CLI + React Web 双客户端。
+一个**本地优先、分层清晰**的编码 Agent 脚手架：自带极简 Agent Loop 循环、OpenAI 兼容 LLM（含流式与思考）、4 个内置工具、插件系统、事件存储与回放，以及 CLI + React Web 双客户端。
 
 > 设计目标是**边界稳定**而不是功能堆叠：`protocols` 先行，`core` 只管消息与工具编排，`server` 是唯一翻译层，`clients` 只渲染事件并发送命令。
 
