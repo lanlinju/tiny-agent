@@ -195,7 +195,7 @@ function Composer({
           ref={ref}
           rows={1}
           value={value}
-          placeholder={busy ? '运行中，输入将作为 steering…' : '给 tiny-agent 发送消息…'}
+          placeholder={busy ? '运行中，输入将作为 steering' : '给 tiny-agent 发送消息'}
           onChange={(event) => setValue(event.target.value)}
           onKeyDown={onKeyDown}
         />
@@ -203,14 +203,21 @@ function Composer({
           <button
             type="button"
             className={`chip ${thinking ? 'chip--on' : ''}`}
-            onClick={() => setThinking((value2) => !value2)}
+            onClick={() => setThinking((current) => !current)}
             aria-pressed={thinking}
             title="使用推理模型（deepseek-reasoner）"
           >
-            <span className="chip-icon">✦</span>
+            <IconThink />
             深度思考
           </button>
+          <button type="button" className="chip chip--muted" disabled title="联网搜索暂未实现">
+            <IconGlobe />
+            智能搜索
+          </button>
           <span className="spacer" />
+          <button type="button" className="icon-btn" disabled title="附件暂未实现" aria-label="附件">
+            <IconClip />
+          </button>
           <button
             type="button"
             className="send"
@@ -218,7 +225,7 @@ function Composer({
             disabled={value.trim() === ''}
             aria-label={busy ? '发送 steering' : '发送'}
           >
-            ↑
+            <IconArrow />
           </button>
         </div>
       </div>
@@ -245,6 +252,43 @@ function asRecord(value: JsonValue | undefined): { [key: string]: JsonValue } | 
     return value;
   }
   return undefined;
+}
+
+function IconThink() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <circle cx="12" cy="12" r="2.4" />
+      <ellipse cx="12" cy="12" rx="9" ry="3.8" />
+      <ellipse cx="12" cy="12" rx="9" ry="3.8" transform="rotate(60 12 12)" />
+      <ellipse cx="12" cy="12" rx="9" ry="3.8" transform="rotate(-60 12 12)" />
+    </svg>
+  );
+}
+
+function IconGlobe() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M3 12h18" />
+      <path d="M12 3c3 3.5 3 14.5 0 18c-3-3.5-3-14.5 0-18Z" />
+    </svg>
+  );
+}
+
+function IconClip() {
+  return (
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <path d="M21 11.5l-8.4 8.4a5 5 0 0 1-7.1-7.1l8.5-8.5a3.4 3.4 0 0 1 4.8 4.8l-8.5 8.5a1.8 1.8 0 0 1-2.6-2.6l7.9-7.9" />
+    </svg>
+  );
+}
+
+function IconArrow() {
+  return (
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+      <path d="M12 19V5M5 12l7-7 7 7" />
+    </svg>
+  );
 }
 
 function summarizeArgs(tool: string, args: JsonValue): string {

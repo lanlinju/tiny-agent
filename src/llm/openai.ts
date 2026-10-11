@@ -7,13 +7,15 @@ import type {
   ToolCall,
 } from './provider';
 
+export type ReasoningEffort = 'none' | 'low' | 'high' | 'max';
+
 export interface OpenAICompatibleOptions {
   readonly apiKey: string;
   readonly model: string;
   readonly baseUrl?: string;
   readonly temperature?: number;
-  /** Model used when a request asks for reasoning (e.g. deepseek-reasoner). */
-  readonly reasoningModel?: string;
+  /** Sent as `reasoning_effort` when thinking is enabled. Defaults to 'high'. */
+  readonly reasoningEffort?: ReasoningEffort;
   /** Injectable for tests; defaults to the global fetch. */
   readonly fetchImpl?: typeof fetch;
 }
@@ -97,13 +99,8 @@ export function createOpenAICompatibleLLM(options: OpenAICompatibleOptions): LLM
 
   return {
     async chat(request) {
-      const model =
-        request.reasoning === true && options.reasoningModel
-          ? options.reasoningModel
-          : options.model;
-
       const body: Record<string, unknown> = {
-        model,
+        model: options.model,
         messages: request.messages.map(toOpenAIMessage),
       };
 
@@ -113,6 +110,11 @@ export function createOpenAICompatibleLLM(options: OpenAICompatibleOptions): LLM
       }
       if (options.temperature !== undefined) {
         body.temperature = options.temperature;
+      }
+      if (request.reasoning !== undefined) {
+        // DeepSeek-compatible thinking switch on the same model.
+        body.thinking = { type: request.reasoning ? 'enabled' : 'disabled' };
+        body.reasoning_effort = request.reasoning ? (options.reasoningEffort ?? 'high') : 'none';
       }
 
       const streaming = request.onDelta !== undefined;

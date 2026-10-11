@@ -443,6 +443,10 @@ button.ghost:hover {
   transition: all 0.12s ease;
 }
 
+.chip svg {
+  flex: none;
+}
+
 .chip:hover {
   border-color: var(--accent);
   color: var(--accent);
@@ -454,8 +458,34 @@ button.ghost:hover {
   background: var(--accent-soft);
 }
 
-.chip-icon {
-  font-size: 12px;
+.chip--muted {
+  color: var(--text-faint);
+  border-color: var(--border);
+  opacity: 0.8;
+  cursor: default;
+}
+
+.chip--muted:hover {
+  border-color: var(--border);
+  color: var(--text-faint);
+}
+
+.icon-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 0;
+  background: transparent;
+  color: var(--text-faint);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.icon-btn:disabled {
+  cursor: default;
+  opacity: 0.55;
 }
 
 button.send {
@@ -465,8 +495,9 @@ button.send {
   border: 0;
   background: var(--accent);
   color: #fff;
-  font-size: 17px;
-  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
 }
 

@@ -4,7 +4,7 @@
     "apiKey": "",
     "baseUrl": "https://api.openai.com/v1",
     "model": "gpt-4o-mini",
-    "reasoningModel": ""
+    "reasoningEffort": "high"
   },
   "server": {
     "port": 3987,

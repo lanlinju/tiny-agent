@@ -173,7 +173,7 @@ test('does not set stream when no delta handler is given', async () => {
   assert.equal(requestBody?.stream, undefined);
 });
 
-test('streams reasoning content and uses the reasoning model', async () => {
+test('streams reasoning content and sends the thinking parameters', async () => {
   const deltas: string[] = [];
   const reasoning: string[] = [];
   let requestBody: Record<string, unknown> | undefined;
@@ -191,7 +191,7 @@ test('streams reasoning content and uses the reasoning model', async () => {
   const llm = createOpenAICompatibleLLM({
     apiKey: 'k',
     model: 'deepseek-chat',
-    reasoningModel: 'deepseek-reasoner',
+    reasoningEffort: 'high',
     fetchImpl,
   });
   const reply = await llm.chat({
@@ -205,7 +205,9 @@ test('streams reasoning content and uses the reasoning model', async () => {
     },
   });
 
-  assert.equal(requestBody?.model, 'deepseek-reasoner');
+  assert.equal(requestBody?.model, 'deepseek-chat');
+  assert.deepEqual(requestBody?.thinking, { type: 'enabled' });
+  assert.equal(requestBody?.reasoning_effort, 'high');
   assert.deepEqual(reasoning, ['Let me ', 'think.']);
   assert.deepEqual(deltas, ['Answer']);
   assert.equal(reply.content, 'Answer');
