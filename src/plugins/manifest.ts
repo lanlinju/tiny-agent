@@ -9,6 +9,7 @@ export const PluginManifestSchema = z.object({
   description: z.string().optional(),
   permissions: z.array(z.string().min(1)).optional(),
   entry: z.string().min(1).optional(),
+  enabled: z.boolean().optional(),
 });
 
 export function parsePluginManifest(input: unknown): z.infer<typeof PluginManifestSchema> {

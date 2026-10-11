@@ -47,6 +47,9 @@ async function main(): Promise<void> {
     dir: pluginDir,
     reservedToolNames: builtinTools.map((tool) => tool.name),
     logger: (message) => console.log(`[plugins] ${message}`),
+    enabled: config.server.plugins.enabled,
+    allow: config.server.plugins.allow,
+    deny: config.server.plugins.deny,
   });
   const plugins = await pluginManager.load();
   const tools = [...builtinTools, ...pluginManager.tools()];

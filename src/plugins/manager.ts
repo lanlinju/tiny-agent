@@ -10,6 +10,12 @@ export interface PluginManagerOptions {
   /** Tool names the manager must not shadow (e.g. built-ins). */
   readonly reservedToolNames?: readonly string[];
   readonly logger?: (message: string) => void;
+  /** Master switch; when false, no plugin is loaded. Defaults to true. */
+  readonly enabled?: boolean;
+  /** When non-empty, only these plugin names may load. */
+  readonly allow?: readonly string[];
+  /** These plugin names never load, regardless of manifest or allow list. */
+  readonly deny?: readonly string[];
 }
 
 export interface PluginManager {
@@ -33,11 +39,18 @@ export interface PluginManager {
 export function createPluginManager(options: PluginManagerOptions): PluginManager {
   const logger = options.logger ?? (() => {});
   const reserved = new Set(options.reservedToolNames ?? []);
+  const allow = new Set(options.allow ?? []);
+  const deny = new Set(options.deny ?? []);
   const loaded: LoadedPlugin[] = [];
   const tools: PluginTool[] = [];
   const modules: PluginModule[] = [];
 
   async function load(): Promise<readonly LoadedPlugin[]> {
+    if (options.enabled === false) {
+      logger('plugins disabled by configuration');
+      return loaded;
+    }
+
     const root = resolve(options.dir);
     const entries = await readPluginDirs(root, logger);
 
@@ -53,6 +66,13 @@ export function createPluginManager(options: PluginManagerOptions): PluginManage
 
   async function loadOne(dir: string): Promise<void> {
     const manifest = await readManifest(dir);
+
+    const skipReason = skipReasonFor(manifest);
+    if (skipReason !== undefined) {
+      logger(`skipped ${manifest.name}@${manifest.version}: ${skipReason}`);
+      return;
+    }
+
     const entry = manifest.entry ?? 'index.js';
     const source = join(dir, entry);
 
@@ -97,6 +117,19 @@ export function createPluginManager(options: PluginManagerOptions): PluginManage
     logger(
       `loaded ${manifest.name}@${manifest.version} tools=[${toolNames.join(', ')}] permissions=[${permissionSummary}]`,
     );
+  }
+
+  function skipReasonFor(manifest: PluginManifest): string | undefined {
+    if (deny.has(manifest.name)) {
+      return 'disabled by host config (deny list)';
+    }
+    if (allow.size > 0 && !allow.has(manifest.name)) {
+      return 'not in host config allow list';
+    }
+    if (manifest.enabled === false) {
+      return 'disabled by plugin manifest';
+    }
+    return undefined;
   }
 
   async function unloadAll(): Promise<void> {

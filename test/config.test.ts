@@ -53,3 +53,47 @@ test('loadConfig rejects invalid numeric env values', () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('loadConfig parses plugin policy from env', () => {
+  const { dir, env } = withConfigFile({});
+  try {
+    const config = loadConfig(
+      {},
+      {
+        ...env,
+        AGENT_PLUGINS_ENABLED: 'false',
+        AGENT_PLUGINS_ALLOW: 'alpha, beta',
+        AGENT_PLUGINS_DENY: 'gamma',
+      },
+    );
+    assert.equal(config.server.plugins.enabled, false);
+    assert.deepEqual(config.server.plugins.allow, ['alpha', 'beta']);
+    assert.deepEqual(config.server.plugins.deny, ['gamma']);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('loadConfig defaults plugin policy to enabled with no restrictions', () => {
+  const { dir, env } = withConfigFile({});
+  try {
+    const config = loadConfig({}, env);
+    assert.equal(config.server.plugins.enabled, true);
+    assert.deepEqual(config.server.plugins.allow, []);
+    assert.deepEqual(config.server.plugins.deny, []);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('loadConfig rejects invalid boolean env values', () => {
+  const { dir, env } = withConfigFile({});
+  try {
+    assert.throws(
+      () => loadConfig({}, { ...env, AGENT_PLUGINS_ENABLED: 'maybe' }),
+      /Invalid AGENT_PLUGINS_ENABLED/,
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

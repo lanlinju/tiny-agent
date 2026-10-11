@@ -16,6 +16,8 @@ export interface PluginManifest {
   readonly description?: string | undefined;
   readonly permissions?: readonly string[] | undefined;
   readonly entry?: string | undefined;
+  /** Plugin-declared default; the host policy can still override it. Defaults to true. */
+  readonly enabled?: boolean | undefined;
 }
 
 /** Passed to a plugin's `onLoad` hook. */

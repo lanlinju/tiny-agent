@@ -30,6 +30,13 @@ const RawConfigSchema = z.object({
       workspaceDir: z.string().min(1).optional(),
       webDir: z.string().min(1).optional(),
       pluginDir: z.string().min(1).optional(),
+      plugins: z
+        .object({
+          enabled: z.boolean().optional(),
+          allow: z.array(z.string().min(1)).optional(),
+          deny: z.array(z.string().min(1)).optional(),
+        })
+        .optional(),
       maxSteps: z.number().int().positive().optional(),
     })
     .optional(),
@@ -53,6 +60,13 @@ const AppConfigSchema = z.object({
     workspaceDir: z.string().min(1).default('.'),
     webDir: z.string().min(1).default('clients/web'),
     pluginDir: z.string().min(1).default('plugins'),
+    plugins: z
+      .object({
+        enabled: z.boolean().default(true),
+        allow: z.array(z.string().min(1)).default([]),
+        deny: z.array(z.string().min(1)).default([]),
+      })
+      .default({}),
     maxSteps: z.number().int().positive().default(8),
   }),
 });
@@ -103,6 +117,23 @@ function readEnvConfig(env: NodeJS.ProcessEnv): RawConfig {
   if (env.AGENT_PLUGIN_DIR?.trim()) {
     server.pluginDir = env.AGENT_PLUGIN_DIR.trim();
   }
+
+  const plugins: NonNullable<NonNullable<RawConfig['server']>['plugins']> = {};
+  const pluginsEnabled = readBoolean(env.AGENT_PLUGINS_ENABLED, 'AGENT_PLUGINS_ENABLED');
+  if (pluginsEnabled !== undefined) {
+    plugins.enabled = pluginsEnabled;
+  }
+  const pluginsAllow = readList(env.AGENT_PLUGINS_ALLOW);
+  if (pluginsAllow !== undefined) {
+    plugins.allow = pluginsAllow;
+  }
+  const pluginsDeny = readList(env.AGENT_PLUGINS_DENY);
+  if (pluginsDeny !== undefined) {
+    plugins.deny = pluginsDeny;
+  }
+  if (Object.keys(plugins).length > 0) {
+    server.plugins = plugins;
+  }
   const maxSteps = readNumber(env.AGENT_MAX_STEPS, 'AGENT_MAX_STEPS');
   if (maxSteps !== undefined) {
     server.maxSteps = maxSteps;
@@ -146,7 +177,11 @@ function mergeConfig(base: RawConfig, override: RawConfig): RawConfig {
     ...base,
     ...override,
     llm: { ...base.llm, ...override.llm },
-    server: { ...base.server, ...override.server },
+    server: {
+      ...base.server,
+      ...override.server,
+      plugins: { ...base.server?.plugins, ...override.server?.plugins },
+    },
   };
 }
 
@@ -159,6 +194,31 @@ function readNumber(value: string | undefined, name: string): number | undefined
     throw new Error(`Invalid ${name}: expected a number, received "${value}"`);
   }
   return parsed;
+}
+
+function readBoolean(value: string | undefined, name: string): boolean | undefined {
+  if (value === undefined || value.trim() === '') {
+    return undefined;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) {
+    return true;
+  }
+  if (['0', 'false', 'no', 'off'].includes(normalized)) {
+    return false;
+  }
+  throw new Error(`Invalid ${name}: expected a boolean, received "${value}"`);
+}
+
+function readList(value: string | undefined): string[] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const items = value
+    .split(',')
+    .map((item) => item.trim())
+    .filter((item) => item !== '');
+  return items.length > 0 ? items : undefined;
 }
 
 function formatError(error: unknown): string {

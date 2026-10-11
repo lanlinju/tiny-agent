@@ -12,6 +12,11 @@
     "workspaceDir": ".",
     "webDir": "clients/web",
     "pluginDir": "plugins",
+    "plugins": {
+      "enabled": true,
+      "allow": [],
+      "deny": []
+    },
     "maxSteps": 8
   }
 }

@@ -126,3 +126,80 @@ test('returns no plugins when the directory is missing', async () => {
   const manager = createPluginManager({ dir: join(tmpdir(), 'ta-plugins-does-not-exist') });
   assert.deepEqual(await manager.load(), []);
 });
+
+function toolEntry(name: string): string {
+  return `
+module.exports = {
+  tools: [
+    {
+      name: '${name}',
+      description: 'x',
+      parameters: { type: 'object', properties: {}, additionalProperties: false },
+      fn: async () => ({}),
+    },
+  ],
+};
+`;
+}
+
+test('respects the global enabled switch', async () => {
+  const root = makeRoot();
+  try {
+    writePlugin(root, 'alpha', { name: 'alpha', version: '1.0.0' }, toolEntry('alpha-tool'));
+    const manager = createPluginManager({ dir: root, enabled: false });
+    assert.deepEqual(await manager.load(), []);
+    assert.equal(manager.tools().length, 0);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('respects the host allow list', async () => {
+  const root = makeRoot();
+  try {
+    writePlugin(root, 'alpha', { name: 'alpha', version: '1.0.0' }, toolEntry('alpha-tool'));
+    writePlugin(root, 'beta', { name: 'beta', version: '1.0.0' }, toolEntry('beta-tool'));
+
+    const manager = createPluginManager({ dir: root, allow: ['beta'] });
+    const loaded = await manager.load();
+    assert.deepEqual(loaded.map((plugin) => plugin.name), ['beta']);
+    assert.deepEqual(manager.tools().map((tool) => tool.name), ['beta-tool']);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('respects the host deny list', async () => {
+  const root = makeRoot();
+  try {
+    writePlugin(root, 'alpha', { name: 'alpha', version: '1.0.0' }, toolEntry('alpha-tool'));
+    writePlugin(root, 'beta', { name: 'beta', version: '1.0.0' }, toolEntry('beta-tool'));
+
+    const manager = createPluginManager({ dir: root, deny: ['alpha'] });
+    const loaded = await manager.load();
+    assert.deepEqual(loaded.map((plugin) => plugin.name), ['beta']);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('honors enabled=false in the plugin manifest', async () => {
+  const root = makeRoot();
+  try {
+    writePlugin(
+      root,
+      'alpha',
+      { name: 'alpha', version: '1.0.0', enabled: false },
+      toolEntry('alpha-tool'),
+    );
+    writePlugin(root, 'beta', { name: 'beta', version: '1.0.0' }, toolEntry('beta-tool'));
+
+    const messages: string[] = [];
+    const manager = createPluginManager({ dir: root, logger: (message) => messages.push(message) });
+    const loaded = await manager.load();
+    assert.deepEqual(loaded.map((plugin) => plugin.name), ['beta']);
+    assert.ok(messages.some((message) => message.includes('disabled by plugin manifest')));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
