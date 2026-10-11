@@ -4,5 +4,5 @@
   "description": "Count words, lines and bytes in a UTF-8 file.",
   "permissions": ["fs.read"],
   "entry": "index.js",
-  "enabled": true
+  "enabled": false
 }
