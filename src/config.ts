@@ -29,6 +29,7 @@ const RawConfigSchema = z.object({
       sessionDir: z.string().min(1).optional(),
       workspaceDir: z.string().min(1).optional(),
       webDir: z.string().min(1).optional(),
+      pluginDir: z.string().min(1).optional(),
       maxSteps: z.number().int().positive().optional(),
     })
     .optional(),
@@ -51,6 +52,7 @@ const AppConfigSchema = z.object({
     sessionDir: z.string().min(1).default('sessions'),
     workspaceDir: z.string().min(1).default('.'),
     webDir: z.string().min(1).default('clients/web'),
+    pluginDir: z.string().min(1).default('plugins'),
     maxSteps: z.number().int().positive().default(8),
   }),
 });
@@ -97,6 +99,9 @@ function readEnvConfig(env: NodeJS.ProcessEnv): RawConfig {
   }
   if (env.AGENT_WEB_DIR?.trim()) {
     server.webDir = env.AGENT_WEB_DIR.trim();
+  }
+  if (env.AGENT_PLUGIN_DIR?.trim()) {
+    server.pluginDir = env.AGENT_PLUGIN_DIR.trim();
   }
   const maxSteps = readNumber(env.AGENT_MAX_STEPS, 'AGENT_MAX_STEPS');
   if (maxSteps !== undefined) {

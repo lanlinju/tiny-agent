@@ -11,6 +11,7 @@
     "sessionDir": "sessions",
     "workspaceDir": ".",
     "webDir": "clients/web",
+    "pluginDir": "plugins",
     "maxSteps": 8
   }
 }

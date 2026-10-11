@@ -6,6 +6,7 @@ import { createMockLLM } from '../llm/mock';
 import { createOpenAICompatibleLLM } from '../llm/openai';
 import { createToolRegistry } from '../tools/registry';
 import { builtinTools } from '../tools/builtin';
+import { createPluginManager } from '../plugins/manager';
 import { createFileSessionStore } from '../store/session-store';
 import { createAgentServer } from './agent-server';
 import { attachWebSocketServer } from './ws-handler';
@@ -37,13 +38,22 @@ function createProvider(config: AppConfig): LLMProvider {
  * Concrete `llm`, `tools` and `store` implementations are wired into the
  * transport-agnostic `AgentServer`, then exposed over WebSocket.
  */
-function main(): void {
+async function main(): Promise<void> {
   const config = loadConfig();
-  const { port, owner, sessionDir, workspaceDir, webDir, maxSteps } = config.server;
+  const { port, owner, sessionDir, workspaceDir, webDir, pluginDir, maxSteps } = config.server;
+
+  // Plugins contribute extra tools; the server is the only layer that loads them.
+  const pluginManager = createPluginManager({
+    dir: pluginDir,
+    reservedToolNames: builtinTools.map((tool) => tool.name),
+    logger: (message) => console.log(`[plugins] ${message}`),
+  });
+  const plugins = await pluginManager.load();
+  const tools = [...builtinTools, ...pluginManager.tools()];
 
   const server = createAgentServer({
     llm: createProvider(config),
-    tools: createToolRegistry(builtinTools),
+    tools: createToolRegistry(tools),
     store: createFileSessionStore(sessionDir),
     owner,
     agentId: config.agentId,
@@ -57,7 +67,7 @@ function main(): void {
 
   httpServer.on('listening', () => {
     console.log(
-      `ready ws://localhost:${port} web=http://localhost:${port} agent=${config.agentId} cwd=${workspaceDir} sessions=${sessionDir} tools=${builtinTools.length}`,
+      `ready ws://localhost:${port} web=http://localhost:${port} agent=${config.agentId} cwd=${workspaceDir} sessions=${sessionDir} tools=${tools.length} plugins=${plugins.length}`,
     );
   });
   httpServer.on('error', (error) => {
@@ -65,20 +75,20 @@ function main(): void {
     process.exitCode = 1;
   });
 
-  process.on('SIGINT', () => {
+  const shutdown = () => {
+    void pluginManager.unloadAll();
     wss.close();
     httpServer.close(() => {
       process.exit(0);
     });
-  });
-  process.on('SIGTERM', () => {
-    wss.close();
-    httpServer.close(() => {
-      process.exit(0);
-    });
-  });
+  };
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
 
   httpServer.listen(port);
 }
 
-main();
+main().catch((error: unknown) => {
+  console.error(`[server] ${error instanceof Error ? error.message : String(error)}`);
+  process.exitCode = 1;
+});

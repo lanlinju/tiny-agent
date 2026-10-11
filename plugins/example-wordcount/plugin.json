@@ -1,0 +1,7 @@
+{
+  "name": "wordcount",
+  "version": "0.1.0",
+  "description": "Count words, lines and bytes in a UTF-8 file.",
+  "permissions": ["fs.read"],
+  "entry": "index.js"
+}
