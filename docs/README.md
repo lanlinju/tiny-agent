@@ -20,6 +20,7 @@
 | `02-protocols.md` | 定义事件、命令、校验边界和演进规则。 |
 | `03-core-loop.md` | 说明极简 Agent Loop、上下文钩子和错误处理原则。 |
 | `04-implementation-roadmap.md` | 按阶段列出交付物、验收标准和禁止越界事项。 |
+| `05-multi-agent.md` | 多 Agent 的架构、协议、依赖边界与阶段规划（不含实现代码）。 |
 
 ## 当前阶段
 
