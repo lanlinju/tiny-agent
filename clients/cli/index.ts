@@ -4,8 +4,8 @@ import { WebSocket } from 'ws';
 import type { AgentCommand } from '../../src/protocols/commands';
 import { parseAgentCommand } from '../../src/protocols/commands';
 import type { AgentEvent } from '../../src/protocols/events';
-import { colorize, formatError, formatEvent, parseEvent, presentEvent } from './render';
-import type { LineKind, RenderOptions } from './render';
+import { colorize, createLocalEchoTracker, formatError, formatEvent, parseEvent, presentEvent } from './render';
+import type { LineKind, RenderLine, RenderOptions } from './render';
 import { createTranscript } from './transcript';
 
 /**
@@ -27,26 +27,36 @@ async function main(): Promise<void> {
   };
   const colorEnabled =
     args.color ?? (process.stdout.isTTY === true && process.env.NO_COLOR === undefined);
-  // In a real terminal the input is echoed by readline, so we suppress the
-  // rendered user line and rely on the prompt. When piped, show it explicitly.
+  // In a real terminal the input is echoed by readline, so we suppress only the
+  // echoed line for our own typed messages; messages from other clients render.
   const interactive = process.stdin.isTTY === true;
-  const suppressUser = interactive;
+  const echo = createLocalEchoTracker();
   let lastKind: LineKind | undefined;
+
+  const writeLine = (line: RenderLine): void => {
+    if (line.kind === 'assistant' && lastKind !== 'assistant') {
+      process.stdout.write('\n');
+    }
+    const stamp = args.timestamps ? `${timestamp()} ` : '';
+    process.stdout.write(`${stamp}${colorize(line.kind, line.text, colorEnabled)}\n`);
+    lastKind = line.kind;
+  };
 
   const render = (event: AgentEvent): void => {
     // The transcript is always complete and uncolored (source: formatEvent).
     transcript?.write(formatEvent(event));
 
+    if (event.type === 'user.message') {
+      if (interactive && echo.consume(event.payload.text)) {
+        return; // already echoed by the terminal
+      }
+      const prefix = interactive ? '[user] ' : 'you> ';
+      writeLine({ kind: 'user', text: `${prefix}${event.payload.text}` });
+      return;
+    }
+
     for (const line of presentEvent(event, renderOptions)) {
-      if (suppressUser && line.kind === 'user') {
-        continue;
-      }
-      if (line.kind === 'assistant' && lastKind !== 'assistant') {
-        process.stdout.write('\n');
-      }
-      const stamp = args.timestamps ? `${timestamp()} ` : '';
-      process.stdout.write(`${stamp}${colorize(line.kind, line.text, colorEnabled)}\n`);
-      lastKind = line.kind;
+      writeLine(line);
     }
   };
 
@@ -113,6 +123,7 @@ async function main(): Promise<void> {
           socket,
           (event) => event.type === 'turn.completed' || event.type === 'error',
         );
+        echo.remember(text);
         sendCommand(socket, { type: 'message.send', payload: { sessionId, text } });
         await finished;
       }

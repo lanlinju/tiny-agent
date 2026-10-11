@@ -172,6 +172,33 @@ export function formatError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+/**
+ * Tracks messages typed in this CLI so their server echo is not rendered twice.
+ *
+ * The terminal already echoes typed input, but the server also broadcasts the
+ * resulting `user.message` to every session subscriber, including us. Messages
+ * from other clients (Web, another CLI) are not tracked, so they still render.
+ */
+export function createLocalEchoTracker(): {
+  remember(text: string): void;
+  consume(text: string): boolean;
+} {
+  const pending: string[] = [];
+  return {
+    remember(text) {
+      pending.push(text);
+    },
+    consume(text) {
+      const index = pending.indexOf(text);
+      if (index === -1) {
+        return false;
+      }
+      pending.splice(index, 1);
+      return true;
+    },
+  };
+}
+
 function summarizeToolArgs(tool: string, args: JsonValue): string {
   const record = asRecord(args);
   if (record) {

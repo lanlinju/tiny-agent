@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { colorize, formatEvent, presentEvent } from '../../clients/cli/render';
+import { colorize, createLocalEchoTracker, formatEvent, presentEvent } from '../../clients/cli/render';
 import { parseAgentEvent } from '../../src/protocols/events';
 
 const PLAIN = { verbose: false, maxOutputLines: 40 };
@@ -94,4 +94,13 @@ test('colorize only applies ANSI when enabled', () => {
   assert.equal(colorize('error', 'x', false), 'x');
   assert.equal(colorize('error', 'x', true), '\x1b[31mx\x1b[0m');
   assert.equal(colorize('assistant', 'x', true), 'x');
+});
+
+test('local echo tracker consumes only its own messages', () => {
+  const echo = createLocalEchoTracker();
+  echo.remember('hi');
+
+  assert.equal(echo.consume('from web'), false);
+  assert.equal(echo.consume('hi'), true);
+  assert.equal(echo.consume('hi'), false);
 });
