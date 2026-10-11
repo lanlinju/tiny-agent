@@ -6,6 +6,7 @@
   "type": "commonjs",
   "scripts": {
     "dev": "tsc --outDir dist && node dist/src/index.js",
+    "demo:core": "tsc --outDir dist && node dist/scripts/demo-core.js",
     "check": "tsc --noEmit"
   },
   "dependencies": {
