@@ -10,7 +10,7 @@
     "demo:core": "tsc --outDir dist && node dist/scripts/demo-core.js",
     "server": "node --env-file-if-exists=.env dist/src/server/main.js",
     "preserver": "npm run build",
-    "cli": "node --env-file-if-exists=.env dist/clients/cli/index.js",
+    "cli": "node --env-file-if-exists=.env dist/scripts/cli.js",
     "precli": "npm run build",
     "replay": "node --env-file-if-exists=.env dist/scripts/replay.js",
     "prereplay": "npm run build",

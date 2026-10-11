@@ -71,6 +71,12 @@ function main(): void {
       process.exit(0);
     });
   });
+  process.on('SIGTERM', () => {
+    wss.close();
+    httpServer.close(() => {
+      process.exit(0);
+    });
+  });
 
   httpServer.listen(port);
 }
