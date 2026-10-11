@@ -23,6 +23,7 @@ async function main(): Promise<void> {
     sessionId: 'demo-session',
     agentId: 'demo-agent',
     owner: 'local',
+    cwd: process.cwd(),
     maxSteps: 8,
     llm,
     tools: registry,

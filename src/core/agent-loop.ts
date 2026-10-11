@@ -72,7 +72,7 @@ async function handleToolCall(
   }
 
   try {
-    const result = await ctx.tools.call(tool, argsResult.value, { now: ctx.now });
+    const result = await ctx.tools.call(tool, argsResult.value, { now: ctx.now, cwd: ctx.cwd });
     messages.push({
       role: 'tool',
       toolCallId: call.id,

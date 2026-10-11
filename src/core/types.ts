@@ -13,6 +13,7 @@ export interface RunContext {
   readonly sessionId: string;
   readonly agentId: string;
   readonly owner: string;
+  readonly cwd: string;
   readonly maxSteps: number;
   readonly llm: LLMProvider;
   readonly tools: ToolRegistry;

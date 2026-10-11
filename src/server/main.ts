@@ -1,56 +1,62 @@
 import { WebSocketServer } from 'ws';
+import type { AppConfig } from '../config';
+import { loadConfig } from '../config';
 import type { LLMProvider } from '../llm/provider';
 import { createMockLLM } from '../llm/mock';
 import { createOpenAICompatibleLLM } from '../llm/openai';
 import { createToolRegistry } from '../tools/registry';
-import { timeTool } from '../tools/builtin/time';
+import { builtinTools } from '../tools/builtin';
 import { createFileSessionStore } from '../store/session-store';
 import { createAgentServer } from './agent-server';
 import { attachWebSocketServer } from './ws-handler';
 
 /**
- * Pick the LLM provider from the environment.
+ * Pick the LLM provider from configuration.
  *
- * Real OpenAI-compatible providers are used when `OPENAI_API_KEY` is present;
+ * Real OpenAI-compatible providers are used when an api key is configured;
  * otherwise the deterministic mock keeps the loop runnable offline.
  */
-function createProvider(): LLMProvider {
-  const apiKey = process.env.OPENAI_API_KEY?.trim();
+function createProvider(config: AppConfig): LLMProvider {
+  const { apiKey, baseUrl, model, temperature } = config.llm;
   if (!apiKey) {
-    console.warn('[server] OPENAI_API_KEY not set; using deterministic mock LLM');
+    console.warn('[server] no llm.apiKey configured; using deterministic mock LLM');
     return createMockLLM();
   }
 
-  const baseUrl = process.env.OPENAI_BASE_URL?.trim() || 'https://api.openai.com/v1';
-  const model = process.env.OPENAI_MODEL?.trim() || 'gpt-4o-mini';
   console.log(`[server] using OpenAI-compatible LLM baseUrl=${baseUrl} model=${model}`);
-  return createOpenAICompatibleLLM({ apiKey, baseUrl, model });
+  return temperature === undefined
+    ? createOpenAICompatibleLLM({ apiKey, baseUrl, model })
+    : createOpenAICompatibleLLM({ apiKey, baseUrl, model, temperature });
 }
 
 /**
  * Local server composition root.
  *
- * Wires concrete `llm`, `tools` and `store` implementations into the
- * transport-agnostic `AgentServer`, then exposes it over WebSocket. Phase 4
- * swaps the mock provider for a real one here.
+ * Configuration comes from `src/config` (defaults < file < env < overrides).
+ * Concrete `llm`, `tools` and `store` implementations are wired into the
+ * transport-agnostic `AgentServer`, then exposed over WebSocket.
  */
 function main(): void {
-  const port = Number(process.env.AGENT_PORT ?? 3987);
-  const owner = process.env.AGENT_OWNER ?? 'local';
-  const sessionDir = process.env.AGENT_SESSION_DIR ?? 'sessions';
+  const config = loadConfig();
+  const { port, owner, sessionDir, workspaceDir, maxSteps } = config.server;
 
   const server = createAgentServer({
-    llm: createProvider(),
-    tools: createToolRegistry([timeTool]),
+    llm: createProvider(config),
+    tools: createToolRegistry(builtinTools),
     store: createFileSessionStore(sessionDir),
     owner,
+    agentId: config.agentId,
+    cwd: workspaceDir,
+    maxSteps,
   });
 
   const wss = new WebSocketServer({ port });
   attachWebSocketServer(wss, server);
 
   wss.on('listening', () => {
-    console.log(`ready ws://localhost:${port} sessions=${sessionDir}`);
+    console.log(
+      `ready ws://localhost:${port} agent=${config.agentId} cwd=${workspaceDir} sessions=${sessionDir} tools=${builtinTools.length}`,
+    );
   });
   wss.on('error', (error) => {
     console.error(`[server] ${error.message}`);

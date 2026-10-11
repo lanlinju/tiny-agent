@@ -1,0 +1,15 @@
+{
+  "agentId": "agent-1",
+  "llm": {
+    "apiKey": "",
+    "baseUrl": "https://api.openai.com/v1",
+    "model": "gpt-4o-mini"
+  },
+  "server": {
+    "port": 3987,
+    "owner": "local",
+    "sessionDir": "sessions",
+    "workspaceDir": ".",
+    "maxSteps": 8
+  }
+}

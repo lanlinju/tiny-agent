@@ -1,6 +1,8 @@
 node_modules/
 dist/
 .env
+agent.config.json
+agent.config.local.json
 sessions/
 user-plugins/
 *.log

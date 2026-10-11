@@ -18,6 +18,7 @@ export interface AgentServerOptions {
   readonly store: SessionStore;
   readonly owner: string;
   readonly agentId?: string;
+  readonly cwd?: string;
   readonly maxSteps?: number;
   readonly now?: () => number;
 }
@@ -38,6 +39,7 @@ export function createAgentServer(options: AgentServerOptions): AgentServer {
   const bus = createEventBus();
   const agentId = options.agentId ?? 'agent-1';
   const owner = options.owner;
+  const cwd = options.cwd ?? process.cwd();
   const maxSteps = options.maxSteps ?? 8;
   const now = options.now ?? (() => Date.now());
   const sessions = new Set<string>();
@@ -84,6 +86,7 @@ export function createAgentServer(options: AgentServerOptions): AgentServer {
       sessionId,
       agentId,
       owner,
+      cwd,
       maxSteps,
       llm: options.llm,
       tools: options.tools,

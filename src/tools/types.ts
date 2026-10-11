@@ -4,6 +4,8 @@ import type { JsonSchema } from '../llm/provider';
 /** Context available to a tool execution. */
 export interface ToolContext {
   readonly now: () => number;
+  /** Working directory used to resolve relative paths and shell commands. */
+  readonly cwd: string;
 }
 
 /** Tool definition registered in the tool registry. */
