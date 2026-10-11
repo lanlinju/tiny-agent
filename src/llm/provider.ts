@@ -38,6 +38,8 @@ export interface Message {
 export interface AssistantMessage extends Message {
   readonly role: 'assistant';
   readonly toolCalls: readonly ToolCall[];
+  /** Reasoning/thinking text, when the provider exposes it. */
+  readonly reasoning?: string;
 }
 
 /** Incremental assistant text callback used by streaming providers. */
@@ -49,6 +51,10 @@ export interface ChatRequest {
   readonly tools?: readonly ToolSchema[];
   /** When provided, the provider may stream assistant text incrementally. */
   readonly onDelta?: ChatDeltaHandler;
+  /** When provided, the provider may stream reasoning/thinking text. */
+  readonly onReasoningDelta?: ChatDeltaHandler;
+  /** Ask the provider to use its reasoning model. */
+  readonly reasoning?: boolean;
 }
 
 /** Replaceable LLM provider boundary. */

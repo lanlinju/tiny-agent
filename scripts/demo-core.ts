@@ -25,6 +25,7 @@ async function main(): Promise<void> {
     owner: 'local',
     cwd: process.cwd(),
     maxSteps: 8,
+    reasoning: false,
     llm,
     tools: registry,
     systemPrompt: defaultSystemPrompt,

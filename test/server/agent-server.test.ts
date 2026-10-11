@@ -160,6 +160,47 @@ test('queues a steer sent immediately after a message', async () => {
   );
 });
 
+test('thinking mode streams reasoning on a separate channel', async () => {
+  let sawReasoningFlag = false;
+  const llm: LLMProvider = {
+    async chat({ reasoning, onDelta, onReasoningDelta }) {
+      sawReasoningFlag = reasoning === true;
+      await onReasoningDelta?.('plan ');
+      await onReasoningDelta?.('carefully');
+      await onDelta?.('answer');
+      return { role: 'assistant', content: 'answer', toolCalls: [] };
+    },
+  };
+  const store = createMemorySessionStore();
+  const server = createAgentServer({ llm, tools: createToolRegistry([]), store, owner: 'test' });
+  const connection = makeConnection();
+  await server.handleRawCommand({ type: 'session.create', payload: {} }, connection);
+  const sessionId = firstSessionId(connection.events);
+  await server.handleRawCommand(
+    { type: 'message.send', payload: { sessionId, text: 'hi', thinking: true } },
+    connection,
+  );
+
+  assert.equal(sawReasoningFlag, true);
+
+  const reasoningDeltas: string[] = [];
+  const contentDeltas: string[] = [];
+  for (const event of connection.events) {
+    if (event.type === 'message.delta') {
+      if (event.payload.channel === 'reasoning') {
+        reasoningDeltas.push(event.payload.text);
+      } else {
+        contentDeltas.push(event.payload.text);
+      }
+    }
+  }
+  assert.deepEqual(reasoningDeltas, ['plan ', 'carefully']);
+  assert.deepEqual(contentDeltas, ['answer']);
+
+  const stored = await store.read(sessionId);
+  assert.equal(stored.some((event) => event.type === 'message.delta'), false);
+});
+
 function createTestServer() {
   return createAgentServer({
     llm: createMockLLM(),

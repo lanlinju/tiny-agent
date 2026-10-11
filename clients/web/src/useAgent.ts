@@ -12,9 +12,18 @@ export type ToolItem = {
   status: 'running' | 'done';
 };
 
+export type AssistantItem = {
+  id: string;
+  kind: 'assistant';
+  messageId: string;
+  text: string;
+  reasoning: string;
+  reasoningDone: boolean;
+};
+
 export type Item =
   | { id: string; kind: 'user'; text: string }
-  | { id: string; kind: 'assistant'; messageId: string; text: string }
+  | AssistantItem
   | ToolItem
   | { id: string; kind: 'error'; text: string }
   | { id: string; kind: 'lifecycle'; text: string };
@@ -27,7 +36,7 @@ export interface AgentController {
   readonly sessionId: string;
   readonly busy: boolean;
   readonly queued: number;
-  readonly submit: (text: string) => void;
+  readonly submit: (text: string, thinking: boolean) => void;
   readonly newSession: () => void;
 }
 
@@ -76,12 +85,12 @@ export function useAgent(requestedSession: string): AgentController {
         setQueued(0);
         break;
       case 'message.delta':
-        setItems((prev) => mergeAssistant(prev, event.payload.messageId, event.payload.text, false));
+        setItems((prev) =>
+          applyDelta(prev, event.payload.messageId, event.payload.channel ?? 'content', event.payload.text),
+        );
         break;
       case 'message.completed':
-        setItems((prev) =>
-          mergeAssistant(prev, event.payload.messageId, event.payload.content, true),
-        );
+        setItems((prev) => completeMessage(prev, event.payload.messageId, event.payload.content));
         break;
       case 'tool.started':
         setItems((prev) => [
@@ -179,7 +188,7 @@ export function useAgent(requestedSession: string): AgentController {
     };
   }, [requestedSession, handleEvent]);
 
-  const submit = useCallback((text: string) => {
+  const submit = useCallback((text: string, thinking: boolean) => {
     const value = text.trim();
     const socket = socketRef.current;
     if (!value || !sessionRef.current || !socket || socket.readyState !== WebSocket.OPEN) {
@@ -187,7 +196,7 @@ export function useAgent(requestedSession: string): AgentController {
     }
     const command: AgentCommand = busyRef.current
       ? { type: 'steer', payload: { sessionId: sessionRef.current, text: value } }
-      : { type: 'message.send', payload: { sessionId: sessionRef.current, text: value } };
+      : { type: 'message.send', payload: { sessionId: sessionRef.current, text: value, thinking } };
     socket.send(JSON.stringify(command));
   }, []);
 
@@ -198,30 +207,48 @@ export function useAgent(requestedSession: string): AgentController {
   return { items, status, sessionId, busy, queued, submit, newSession };
 }
 
-function mergeAssistant(
+function findAssistant(items: Item[], messageId: string): number {
+  return items.findIndex((item) => item.kind === 'assistant' && item.messageId === messageId);
+}
+
+function newAssistant(messageId: string): AssistantItem {
+  return { id: messageId, kind: 'assistant', messageId, text: '', reasoning: '', reasoningDone: false };
+}
+
+function applyDelta(
   items: Item[],
   messageId: string,
+  channel: 'content' | 'reasoning',
   text: string,
-  replace: boolean,
 ): Item[] {
-  const index = items.findIndex((item) => item.kind === 'assistant' && item.messageId === messageId);
+  const index = findAssistant(items, messageId);
+  const base = index === -1 ? [...items, newAssistant(messageId)] : items;
+  const at = index === -1 ? base.length - 1 : index;
+  const current = base[at];
+  if (current === undefined || current.kind !== 'assistant') {
+    return items;
+  }
+  const copy = [...base];
+  copy[at] =
+    channel === 'reasoning'
+      ? { ...current, reasoning: current.reasoning + text }
+      : { ...current, text: current.text + text };
+  return copy;
+}
 
+function completeMessage(items: Item[], messageId: string, content: string): Item[] {
+  const index = findAssistant(items, messageId);
   if (index === -1) {
-    if (text === '') {
+    if (content === '') {
       return items;
     }
-    return [...items, { id: messageId, kind: 'assistant', messageId, text }];
+    return [...items, { ...newAssistant(messageId), text: content, reasoningDone: true }];
   }
-
   const current = items[index];
   if (current === undefined || current.kind !== 'assistant') {
     return items;
   }
-  const next = replace ? text : current.text + text;
-  if (next === current.text) {
-    return items;
-  }
   const copy = [...items];
-  copy[index] = { ...current, text: next };
+  copy[index] = { ...current, text: content, reasoningDone: true };
   return copy;
 }

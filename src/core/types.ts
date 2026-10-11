@@ -15,6 +15,8 @@ export interface RunContext {
   readonly owner: string;
   readonly cwd: string;
   readonly maxSteps: number;
+  /** Ask the provider to use its reasoning model for this run. */
+  readonly reasoning: boolean;
   readonly llm: LLMProvider;
   readonly tools: ToolRegistry;
   readonly systemPrompt: () => string;

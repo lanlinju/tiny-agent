@@ -3,7 +3,7 @@ import type { KeyboardEvent } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useAgent } from './useAgent';
-import type { AgentController, Item, ToolItem } from './useAgent';
+import type { AgentController, AssistantItem, Item, ToolItem } from './useAgent';
 import type { JsonValue } from './protocol';
 
 export function App() {
@@ -59,7 +59,7 @@ function Header({ agent }: { agent: AgentController }) {
       {agent.sessionId ? (
         <button
           className="ghost"
-          title={`copy ${agent.sessionId}`}
+          title={`复制 ${agent.sessionId}`}
           onClick={() => {
             void navigator.clipboard?.writeText(agent.sessionId);
           }}
@@ -69,7 +69,7 @@ function Header({ agent }: { agent: AgentController }) {
       ) : null}
       <span className="spacer" />
       <button className="ghost" onClick={agent.newSession}>
-        New session
+        新会话
       </button>
     </header>
   );
@@ -80,11 +80,7 @@ function Row({ item }: { item: Item }) {
     case 'user':
       return <div className="msg-user">{item.text}</div>;
     case 'assistant':
-      return (
-        <div className="msg-assistant">
-          <Markdown text={item.text} />
-        </div>
-      );
+      return <AssistantRow item={item} />;
     case 'tool':
       return <ToolCard item={item} />;
     case 'error':
@@ -94,16 +90,37 @@ function Row({ item }: { item: Item }) {
   }
 }
 
-function Markdown({ text }: { text: string }) {
+function AssistantRow({ item }: { item: AssistantItem }) {
   return (
-    <div className="md">
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
+    <div className="msg-assistant">
+      {item.reasoning ? (
+        <ThinkingBlock reasoning={item.reasoning} done={item.reasoningDone} />
+      ) : null}
+      {item.text ? (
+        <div className="md">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{item.text}</ReactMarkdown>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** DeepSeek-style collapsible reasoning block; collapsed by default. */
+function ThinkingBlock({ reasoning, done }: { reasoning: string; done: boolean }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className={`thinking ${done ? '' : 'thinking--live'}`}>
+      <button className="thinking-head" onClick={() => setOpen((value) => !value)}>
+        <span className="chev">{open ? '▾' : '▸'}</span>
+        <span className="thinking-label">{done ? '已深度思考' : '深度思考中…'}</span>
+      </button>
+      {open ? <div className="thinking-body">{reasoning}</div> : null}
     </div>
   );
 }
 
 function ToolCard({ item }: { item: ToolItem }) {
-  const [open, setOpen] = useState(item.status === 'running');
+  const [open, setOpen] = useState(false);
 
   useEffect(() => {
     if (item.error) {
@@ -140,9 +157,10 @@ function Composer({
 }: {
   busy: boolean;
   queued: number;
-  onSubmit: (text: string) => void;
+  onSubmit: (text: string, thinking: boolean) => void;
 }) {
   const [value, setValue] = useState('');
+  const [thinking, setThinking] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -159,7 +177,7 @@ function Composer({
     if (!text) {
       return;
     }
-    onSubmit(text);
+    onSubmit(text, thinking);
     setValue('');
   };
 
@@ -177,21 +195,36 @@ function Composer({
           ref={ref}
           rows={1}
           value={value}
-          placeholder={busy ? 'Steer the agent…' : 'Message tiny-agent…'}
+          placeholder={busy ? '运行中，输入将作为 steering…' : '给 tiny-agent 发送消息…'}
           onChange={(event) => setValue(event.target.value)}
           onKeyDown={onKeyDown}
         />
-        <button
-          className={`send ${busy ? 'steer' : ''}`}
-          onClick={submit}
-          disabled={value.trim() === ''}
-        >
-          {busy ? 'Steer' : 'Send'}
-        </button>
+        <div className="composer-toolbar">
+          <button
+            type="button"
+            className={`chip ${thinking ? 'chip--on' : ''}`}
+            onClick={() => setThinking((value2) => !value2)}
+            aria-pressed={thinking}
+            title="使用推理模型（deepseek-reasoner）"
+          >
+            <span className="chip-icon">✦</span>
+            深度思考
+          </button>
+          <span className="spacer" />
+          <button
+            type="button"
+            className="send"
+            onClick={submit}
+            disabled={value.trim() === ''}
+            aria-label={busy ? '发送 steering' : '发送'}
+          >
+            ↑
+          </button>
+        </div>
       </div>
       <div className="composer-meta">
-        <span>{busy ? 'Enter to steer · Shift+Enter for newline' : 'Enter to send · Shift+Enter for newline'}</span>
-        {queued > 0 ? <span className="queued">· {queued} queued</span> : null}
+        <span>{busy ? '运行中 · Enter 作为 steering' : 'Enter 发送 · Shift+Enter 换行'}</span>
+        {queued > 0 ? <span className="queued">· {queued} 条排队</span> : null}
       </div>
     </div>
   );

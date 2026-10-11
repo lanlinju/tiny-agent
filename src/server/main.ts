@@ -19,16 +19,19 @@ import { createAgentHttpServer } from './http-server';
  * otherwise the deterministic mock keeps the loop runnable offline.
  */
 function createProvider(config: AppConfig): LLMProvider {
-  const { apiKey, baseUrl, model, temperature } = config.llm;
+  const { apiKey, baseUrl, model, reasoningModel, temperature } = config.llm;
   if (!apiKey) {
     console.warn('[server] no llm.apiKey configured; using deterministic mock LLM');
     return createMockLLM();
   }
 
-  console.log(`[server] using OpenAI-compatible LLM baseUrl=${baseUrl} model=${model}`);
-  return temperature === undefined
-    ? createOpenAICompatibleLLM({ apiKey, baseUrl, model })
-    : createOpenAICompatibleLLM({ apiKey, baseUrl, model, temperature });
+  console.log(
+    `[server] using OpenAI-compatible LLM baseUrl=${baseUrl} model=${model}${reasoningModel ? ` reasoningModel=${reasoningModel}` : ''}`,
+  );
+  const base = { apiKey, baseUrl, model };
+  const withTemperature = temperature === undefined ? base : { ...base, temperature };
+  const full = reasoningModel === undefined ? withTemperature : { ...withTemperature, reasoningModel };
+  return createOpenAICompatibleLLM(full);
 }
 
 /**

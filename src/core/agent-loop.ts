@@ -30,7 +30,9 @@ export async function runLoop(ctx: RunContext, goal: string): Promise<string> {
     const response = await ctx.llm.chat({
       messages,
       tools: ctx.tools.schemas(),
-      onDelta: (text) => emitMessageDelta(ctx, messageId, text),
+      reasoning: ctx.reasoning,
+      onDelta: (text) => emitMessageDelta(ctx, messageId, text, 'content'),
+      onReasoningDelta: (text) => emitMessageDelta(ctx, messageId, text, 'reasoning'),
     });
 
     messages.push(response);
@@ -148,8 +150,13 @@ async function emitMessageCompleted(
   });
 }
 
-async function emitMessageDelta(ctx: RunContext, messageId: string, text: string): Promise<void> {
-  await ctx.emit({ type: 'message.delta', ...meta(ctx), payload: { messageId, text } });
+async function emitMessageDelta(
+  ctx: RunContext,
+  messageId: string,
+  text: string,
+  channel: 'content' | 'reasoning',
+): Promise<void> {
+  await ctx.emit({ type: 'message.delta', ...meta(ctx), payload: { messageId, text, channel } });
 }
 
 async function emitToolStarted(

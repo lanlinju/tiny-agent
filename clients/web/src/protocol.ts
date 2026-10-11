@@ -19,7 +19,7 @@ export type AgentEvent =
   | { type: 'turn.started'; payload: { goal: string } }
   | { type: 'turn.completed'; payload: { answer: string } }
   | { type: 'turn.interrupted'; payload: Record<string, never> }
-  | { type: 'message.delta'; payload: { messageId: string; text: string } }
+  | { type: 'message.delta'; payload: { messageId: string; text: string; channel?: 'content' | 'reasoning' } }
   | { type: 'message.completed'; payload: { messageId: string; role: string; content: string } }
   | { type: 'tool.started'; payload: { toolCallId: string; tool: string; args: JsonValue } }
   | {

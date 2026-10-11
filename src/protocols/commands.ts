@@ -22,6 +22,7 @@ export const MessageSendCommandSchema = CommandMetaSchema.extend({
   payload: z.object({
     sessionId: z.string().min(1),
     text: z.string().min(1),
+    thinking: z.boolean().optional(),
   }).strict(),
 }).strict();
 

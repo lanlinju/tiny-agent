@@ -12,6 +12,8 @@ export interface OpenAICompatibleOptions {
   readonly model: string;
   readonly baseUrl?: string;
   readonly temperature?: number;
+  /** Model used when a request asks for reasoning (e.g. deepseek-reasoner). */
+  readonly reasoningModel?: string;
   /** Injectable for tests; defaults to the global fetch. */
   readonly fetchImpl?: typeof fetch;
 }
@@ -31,6 +33,7 @@ const ChatCompletionSchema = z.object({
       z.object({
         message: z.object({
           content: z.string().nullable().optional(),
+          reasoning_content: z.string().nullable().optional(),
           tool_calls: z.array(OpenAICompatibleToolCallSchema).optional(),
         }),
       }),
@@ -45,6 +48,7 @@ const StreamChunkSchema = z.object({
         delta: z
           .object({
             content: z.string().nullable().optional(),
+            reasoning_content: z.string().nullable().optional(),
             tool_calls: z
               .array(
                 z.object({
@@ -84,8 +88,8 @@ interface ToolCallAccumulator {
  * OpenAI-compatible chat provider (OpenAI, DeepSeek, and other compatible APIs).
  *
  * This is the only place that knows the wire format. When `onDelta` is present
- * it uses the upstream SSE stream (`stream: true`) and forwards text
- * incrementally; otherwise it uses a single non-streaming response.
+ * it uses the upstream SSE stream (`stream: true`) and forwards text (and
+ * optional reasoning) incrementally; otherwise it uses a single response.
  */
 export function createOpenAICompatibleLLM(options: OpenAICompatibleOptions): LLMProvider {
   const baseUrl = (options.baseUrl ?? 'https://api.openai.com/v1').replace(/\/+$/, '');
@@ -93,8 +97,13 @@ export function createOpenAICompatibleLLM(options: OpenAICompatibleOptions): LLM
 
   return {
     async chat(request) {
+      const model =
+        request.reasoning === true && options.reasoningModel
+          ? options.reasoningModel
+          : options.model;
+
       const body: Record<string, unknown> = {
-        model: options.model,
+        model,
         messages: request.messages.map(toOpenAIMessage),
       };
 
@@ -128,7 +137,7 @@ export function createOpenAICompatibleLLM(options: OpenAICompatibleOptions): LLM
       }
 
       if (streaming && request.onDelta) {
-        return readStreamingCompletion(response, request.onDelta);
+        return readStreamingCompletion(response, request.onDelta, request.onReasoningDelta);
       }
 
       return parseChatCompletion(await response.json());
@@ -166,17 +175,20 @@ function parseChatCompletion(json: unknown): AssistantMessage {
     throw new Error('LLM response contained no choices');
   }
 
+  const reasoning = choice.message.reasoning_content ?? '';
   return {
     role: 'assistant',
     content: choice.message.content ?? '',
     toolCalls: choice.message.tool_calls ?? [],
+    ...(reasoning !== '' ? { reasoning } : {}),
   };
 }
 
-/** Read an OpenAI-compatible SSE stream, forwarding text deltas as they arrive. */
+/** Read an OpenAI-compatible SSE stream, forwarding content/reasoning deltas. */
 async function readStreamingCompletion(
   response: Response,
   onDelta: ChatDeltaHandler,
+  onReasoningDelta: ChatDeltaHandler | undefined,
 ): Promise<AssistantMessage> {
   const body = response.body;
   if (!body) {
@@ -188,12 +200,20 @@ async function readStreamingCompletion(
   const toolCalls = new Map<number, ToolCallAccumulator>();
   let buffer = '';
   let content = '';
+  let reasoning = '';
 
   const consume = async (line: string): Promise<void> => {
-    const text = handleStreamLine(line, toolCalls);
-    if (text !== undefined && text !== '') {
-      content += text;
-      await onDelta(text);
+    const chunk = handleStreamLine(line, toolCalls);
+    if (!chunk) {
+      return;
+    }
+    if (chunk.content !== undefined && chunk.content !== '') {
+      content += chunk.content;
+      await onDelta(chunk.content);
+    }
+    if (chunk.reasoning !== undefined && chunk.reasoning !== '') {
+      reasoning += chunk.reasoning;
+      await onReasoningDelta?.(chunk.reasoning);
     }
   };
 
@@ -218,13 +238,19 @@ async function readStreamingCompletion(
     role: 'assistant',
     content,
     toolCalls: buildToolCalls(toolCalls),
+    ...(reasoning !== '' ? { reasoning } : {}),
   };
+}
+
+interface StreamTextChunk {
+  readonly content?: string;
+  readonly reasoning?: string;
 }
 
 function handleStreamLine(
   line: string,
   toolCalls: Map<number, ToolCallAccumulator>,
-): string | undefined {
+): StreamTextChunk | undefined {
   const trimmed = line.trim();
   if (trimmed === '' || trimmed.startsWith(':')) {
     return undefined; // blank line or SSE comment/keepalive
@@ -258,7 +284,10 @@ function handleStreamLine(
     toolCalls.set(fragment.index, current);
   }
 
-  return delta.content ?? undefined;
+  return {
+    ...(delta.content != null ? { content: delta.content } : {}),
+    ...(delta.reasoning_content != null ? { reasoning: delta.reasoning_content } : {}),
+  };
 }
 
 function buildToolCalls(toolCalls: Map<number, ToolCallAccumulator>): ToolCall[] {

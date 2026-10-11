@@ -68,6 +68,7 @@ export const MessageDeltaEventSchema = EventMetaSchema.extend({
   payload: z.object({
     messageId: z.string().min(1),
     text: z.string(),
+    channel: z.enum(['content', 'reasoning']).optional(),
   }).strict(),
 }).strict();
 

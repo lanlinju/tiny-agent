@@ -19,6 +19,7 @@ const RawConfigSchema = z.object({
       apiKey: z.string().min(1).optional(),
       baseUrl: z.string().url().optional(),
       model: z.string().min(1).optional(),
+      reasoningModel: z.string().min(1).optional(),
       temperature: z.number().min(0).max(2).optional(),
     })
     .optional(),
@@ -51,6 +52,7 @@ const AppConfigSchema = z.object({
     apiKey: z.string().min(1).optional(),
     baseUrl: z.string().url().default('https://api.openai.com/v1'),
     model: z.string().min(1).default('gpt-4o-mini'),
+    reasoningModel: z.string().min(1).optional(),
     temperature: z.number().min(0).max(2).optional(),
   }),
   server: z.object({
@@ -91,6 +93,9 @@ function readEnvConfig(env: NodeJS.ProcessEnv): RawConfig {
   }
   if (env.OPENAI_MODEL?.trim()) {
     llm.model = env.OPENAI_MODEL.trim();
+  }
+  if (env.OPENAI_REASONING_MODEL?.trim()) {
+    llm.reasoningModel = env.OPENAI_REASONING_MODEL.trim();
   }
   const temperature = readNumber(env.OPENAI_TEMPERATURE, 'OPENAI_TEMPERATURE');
   if (temperature !== undefined) {

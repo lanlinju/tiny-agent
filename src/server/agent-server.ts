@@ -163,6 +163,7 @@ export function createAgentServer(options: AgentServerOptions): AgentServer {
     connection: AgentConnection,
     sessionId: string,
     text: string,
+    thinking: boolean,
   ): Promise<void> {
     const state = sessions.get(sessionId);
     if (!state) {
@@ -181,6 +182,7 @@ export function createAgentServer(options: AgentServerOptions): AgentServer {
         owner,
         cwd,
         maxSteps,
+        reasoning: thinking,
         llm: options.llm,
         tools: options.tools,
         systemPrompt: defaultSystemPrompt,
@@ -221,7 +223,7 @@ export function createAgentServer(options: AgentServerOptions): AgentServer {
     }
     if (!state.running) {
       // Idle: treat steering like an ordinary message so it still works.
-      await sendMessage(connection, sessionId, text);
+      await sendMessage(connection, sessionId, text, false);
       return;
     }
     state.steering.push(text);
@@ -242,7 +244,12 @@ export function createAgentServer(options: AgentServerOptions): AgentServer {
         await attachSession(connection, command.payload.sessionId, command.payload.since ?? 0);
         return;
       case 'message.send':
-        await sendMessage(connection, command.payload.sessionId, command.payload.text);
+        await sendMessage(
+          connection,
+          command.payload.sessionId,
+          command.payload.text,
+          command.payload.thinking ?? false,
+        );
         return;
       case 'steer':
         await steer(connection, command.payload.sessionId, command.payload.text);
