@@ -1,6 +1,6 @@
 # tiny-agent
 
-一个**本地优先、分层清晰**的编码 Agent 脚手架：自带极简 Agent Loop 循环、OpenAI 兼容 LLM（含流式与思考）、4 个内置工具、插件系统、事件存储与回放，以及 CLI + React Web 双客户端。
+一个**分层清晰**的编码 Agent 脚手架：自带极简 Agent Loop 循环、OpenAI 兼容 LLM（含流式与思考）、4 个内置工具、插件系统、事件存储与回放，以及 CLI + React Web 双客户端。
 
 > 设计目标是**边界稳定**而不是功能堆叠：`protocols` 先行，`core` 只管消息与工具编排，`server` 是唯一翻译层，`clients` 只渲染事件并发送命令。
 
@@ -8,8 +8,7 @@
 
 ## 特性
 
-- 🧠 **极简 ReAct 循环**：messages + tool calls + 事件钩子，不掺杂网络/UI/文件系统。
-- 🔌 **可替换 LLM**：`LLMProvider` 边界；内置 `mock` 与 OpenAI 兼容 provider（OpenAI / DeepSeek / 其他兼容端点）。
+- 🔌 **可替换 LLM**：`LLMProvider` 边界；OpenAI 兼容 provider（OpenAI / DeepSeek / 其他兼容端点）。
 - 🌊 **流式输出**：正文 `message.delta`、思考 `reasoning.delta`，SSE 上游解析。
 - 💭 **思考模式**：通过 DeepSeek 的 `thinking` / `reasoning_effort` 参数开关，思考内容默认折叠。
 - 🛠 **4 个内置工具**：`read` / `write` / `edit` / `shell`（工具内**不含**审批策略）。
@@ -73,18 +72,6 @@ npm run cli -- <sessionId>  # 附加到已有会话（与 Web 同会话同步）
 ```
 
 CLI 选项：`-v/--verbose`、`--no-color`、`--timestamps`、`--max-output <n>`、`--log <path>`。
-
-### 3. 离线回放
-
-```bash
-npm run replay <sessionId>  # 从 events.jsonl 复现完整推理链（不重跑 LLM / 工具）
-```
-
-### 4. 纯本地 no-key 演示
-
-```bash
-npm run demo:core           # 使用确定性 mock LLM 跑一遍 ReAct 循环
-```
 
 ---
 
@@ -236,7 +223,6 @@ npm run build   # 编译 TS + 打包 Web 到 dist/
 | 能力 | 状态 |
 | --- | --- |
 | 协议 + 工程骨架 | ✅ |
-| Core ReAct + Mock LLM | ✅ |
 | Server + Store + CLI | ✅ |
 | OpenAI 兼容 provider（流式） | ✅ |
 | 内置工具 read/write/edit/shell | ✅ |
